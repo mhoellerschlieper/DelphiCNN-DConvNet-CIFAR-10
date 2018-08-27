@@ -1,6 +1,6 @@
 # DelphiCNN
 
-This is a ConvNetJS to Delphi7 translation.
+This is a ConvNetJS to Delphi7 (object pascal) translation.
 
 A Convolution Neural Network in Delphi.
 
