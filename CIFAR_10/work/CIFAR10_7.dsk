@@ -8,40 +8,36 @@ File_5=SourceModule,'C:\Entwicklung\Projekte\ALOBV\Delphi\Common\uClass_OpenCL.p
 File_6=SourceModule,'C:\Entwicklung\Projekte\ALOBV\Delphi\Common\OpenCL\OpenCL\CL.pas',0,1,366,1,1,0,0
 
 [Modules]
-Module0=P:\Entwicklung\Projekte\ALOBV\Delphi\Beispiele\CIFAR_10\work\uFRMMain.pas
-Module1=P:\Entwicklung\Projekte\ALOBV\Delphi\Beispiele\Common\uClasses_Types.pas
-Module2=P:\Entwicklung\Projekte\ALOBV\Delphi\Beispiele\Common\uClass_Imaging.pas
+Module0=P:\Entwicklung\Projekte\DelphiCNN\DelphiCNN\CIFAR_10\work\uFRMMain.pas
+Module1=P:\Entwicklung\Projekte\DelphiCNN\DelphiCNN\Common\uClass_Imaging.pas
+Module2=P:\Entwicklung\Projekte\DelphiCNN\DelphiCNN\CIFAR_10\work\CIFAR10_7.dpr
 Count=3
 EditWindowCount=1
 
-[P:\Entwicklung\Projekte\ALOBV\Delphi\Beispiele\CIFAR_10\work\uFRMMain.pas]
+[P:\Entwicklung\Projekte\DelphiCNN\DelphiCNN\CIFAR_10\work\uFRMMain.pas]
 ModuleType=SourceModule
 FormState=1
 FormOnTop=0
 
-[P:\Entwicklung\Projekte\ALOBV\Delphi\Beispiele\Common\uClasses_Types.pas]
+[P:\Entwicklung\Projekte\DelphiCNN\DelphiCNN\Common\uClass_Imaging.pas]
 ModuleType=SourceModule
 FormState=0
 FormOnTop=0
 
-[P:\Entwicklung\Projekte\ALOBV\Delphi\Beispiele\Common\uClass_Imaging.pas]
+[P:\Entwicklung\Projekte\DelphiCNN\DelphiCNN\CIFAR_10\work\CIFAR10_7.dpr]
 ModuleType=SourceModule
 FormState=0
 FormOnTop=0
+SymbolFile=P:\Entwicklung\Projekte\DelphiCNN\DelphiCNN\CIFAR_10\work\CIFAR10_7.dsm
+ModSinceCompile=0
 
 [C:\Program Files\Borland\Delphi7\Projects\ProjectGroup1.bpg]
 FormState=0
 FormOnTop=0
 
-[P:\Entwicklung\Projekte\ALOBV\Delphi\Beispiele\CIFAR_10\work\CIFAR10_7.dpr]
-FormState=0
-FormOnTop=0
-SymbolFile=P:\Entwicklung\Projekte\ALOBV\Delphi\Beispiele\CIFAR_10\work\CIFAR10_7.dsm
-ModSinceCompile=0
-
 [EditWindow0]
 ViewCount=3
-CurrentView=0
+CurrentView=1
 View0=0
 View1=1
 View2=2
@@ -67,24 +63,24 @@ BottomPanelClients=MessageView@EditWindow0
 BottomPanelData=00000400010000000B0000004D657373616765566965770000000000000000000000000000000000FFFFFFFF
 
 [View0]
-Module=P:\Entwicklung\Projekte\ALOBV\Delphi\Beispiele\CIFAR_10\work\uFRMMain.pas
-CursorX=60
-CursorY=640
-TopLine=577
-LeftCol=1
-
-[View1]
-Module=P:\Entwicklung\Projekte\ALOBV\Delphi\Beispiele\Common\uClass_Imaging.pas
-CursorX=1
-CursorY=206
-TopLine=190
-LeftCol=1
-
-[View2]
-Module=P:\Entwicklung\Projekte\ALOBV\Delphi\Beispiele\Common\uClasses_Types.pas
+Module=P:\Entwicklung\Projekte\DelphiCNN\DelphiCNN\CIFAR_10\work\CIFAR10_7.dpr
 CursorX=1
 CursorY=1
 TopLine=1
+LeftCol=1
+
+[View1]
+Module=P:\Entwicklung\Projekte\DelphiCNN\DelphiCNN\CIFAR_10\work\uFRMMain.pas
+CursorX=11
+CursorY=805
+TopLine=778
+LeftCol=1
+
+[View2]
+Module=P:\Entwicklung\Projekte\DelphiCNN\DelphiCNN\Common\uClass_Imaging.pas
+CursorX=1
+CursorY=195
+TopLine=188
 LeftCol=1
 
 [Watches]

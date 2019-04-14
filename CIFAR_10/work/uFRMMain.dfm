@@ -131,7 +131,7 @@ object FRMMain: TFRMMain
       OnClick = btnPrevClick
     end
   end
-  object StatusBar1: TStatusBar
+  object StatusBar: TStatusBar
     Left = 0
     Top = 714
     Width = 1485

@@ -64,6 +64,7 @@ Type
     AVGRunsPerSec: Integer;
     iDisplayLayerIDX: Integer;
 
+    sDataPath: String;
     LearningInfo: TLearningInfo;
   public
 
@@ -91,7 +92,7 @@ Type
     imgPrediction: TImage;
     btnStart: TButton;
     btnNext: TButton;
-    StatusBar1: TStatusBar;
+    StatusBar: TStatusBar;
     MainMenu1: TMainMenu;
     File1: TMenuItem;
     Laod1: TMenuItem;
@@ -563,6 +564,8 @@ Constructor TLearnThread.create;
 Begin
   Inherited create(true);
 
+  sDataPath := '.\Data\cifar-10-batches-bin\';
+
   Priority := tpHighest;
   SetProcessAffinityMask(self.Handle, $FF);
 
@@ -572,7 +575,6 @@ End;
 Procedure TLearnThread.Init;
 Var
   i                 : Integer;
-  sDataPath         : String;
 Begin
   Try
 
@@ -600,8 +602,12 @@ Begin
     // Bilder laden
     iImageBlock := 1;
     Class_Imaging := TClass_Imaging.create;
-    sDataPath := '.\Data\cifar-10-batches-bin\';
-    Class_Imaging.LoadCifar_ADDTrainData(sDataPath + 'data_batch_' + inttostr(iImageBlock) + '.bin', sDataPath + 'batches.meta.txt', Cifar10);
+
+    Class_Imaging.LoadCifar_ADDTrainData(
+      sDataPath + 'data_batch_' + inttostr(iImageBlock) + '.bin',
+      sDataPath + 'batches.meta.txt',
+      Cifar10);
+
     Class_Imaging.LoadCifar_ADDTestData(sDataPath + '\test_batch.bin', sDataPath + 'batches.meta.txt', Cifar10);
 
     ResultArray := TMyArray.create(10); // es gibt 10 Klasse,
@@ -722,72 +728,80 @@ End;
 
 Procedure TLearnThread.Learn;
 Begin
+  Try
 
-  If Class_Imaging.TrainData[iTrainingIDX].PicVolume <> Nil Then
-  Begin
-    iRuns := iRuns + 1;
-
-    TPArraysingle(ResultArray.Buffer^)[0] := Class_Imaging.TrainData[iTrainingIDX].Cat1;
-
-    // eine Epoche trainieren
-    TrainReg := Trainer.train(Class_Imaging.TrainData[iTrainingIDX].PicVolume, ResultArray);
-
-    // Lernerfolg prüfen....
-    If Net.getPrediction = Class_Imaging.TrainData[iTrainingIDX].Cat1 Then
-      TrainReg.TrainingAccuracy := TrainReg.TrainingAccuracy + 1;
-
-    // die Kostenergebnisse summieren
-    TrainReg.SumCostLoss := TrainReg.SumCostLoss + TrainReg.cost_loss;
-    TrainReg.Suml2decayloss := TrainReg.Suml2decayloss + TrainReg.l2_decay_loss;
-
-    TrainReg.iRunStat := TrainReg.iRunStat + 1;
-
-    If TrainReg.iRunStat > 2 Then
-      AVGRunsPerSec := round(1000 / ((GettickCount - iStartTime) / TrainReg.iRunStat));
-
-    // alle 1000 Durchläufe speichern
-    If iRuns Mod 1000 = 999 Then
-      Net.Export;
-
-    Synchronize(Sync);
-  End;
-
-  // Training von vorne, nach x Durchläufen
-  If iTrainingIDX < Class_IMaging.iImageCount_TrainData Then //high(Class_Imaging.TrainData) then
-  Begin
-
-    // Behandlung von Chunks
-   { If iTrainingIDX Mod Options.ChunkSize = Options.ChunkSize - 1 Then
+    If Class_Imaging.TrainData[iTrainingIDX].PicVolume <> Nil Then
     Begin
-      iChunkIDX := iChunkIDX + 1;
+      iRuns := iRuns + 1;
 
-      If iChunkIDX > 3 Then
+      TPArraysingle(ResultArray.Buffer^)[0] := Class_Imaging.TrainData[iTrainingIDX].Cat1;
+
+      // eine Epoche trainieren
+      TrainReg := Trainer.train(Class_Imaging.TrainData[iTrainingIDX].PicVolume, ResultArray);
+
+      // Lernerfolg prüfen....
+      If Net.getPrediction = Class_Imaging.TrainData[iTrainingIDX].Cat1 Then
+        TrainReg.TrainingAccuracy := TrainReg.TrainingAccuracy + 1;
+
+      // die Kostenergebnisse summieren
+      TrainReg.SumCostLoss := TrainReg.SumCostLoss + TrainReg.cost_loss;
+      TrainReg.Suml2decayloss := TrainReg.Suml2decayloss + TrainReg.l2_decay_loss;
+
+      TrainReg.iRunStat := TrainReg.iRunStat + 1;
+
+      If TrainReg.iRunStat > 2 Then
+        AVGRunsPerSec := round(1000 / ((GettickCount - iStartTime) / TrainReg.iRunStat));
+
+      // alle 1000 Durchläufe speichern
+      If iRuns Mod 1000 = 999 Then
+        Net.Export;
+
+      Synchronize(Sync);
+    End;
+
+    // Training von vorne, nach x Durchläufen
+    If iTrainingIDX < Class_IMaging.iImageCount_TrainData - 1 Then //high(Class_Imaging.TrainData) then
+    Begin
+
+      // Behandlung von Chunks
+     { If iTrainingIDX Mod Options.ChunkSize = Options.ChunkSize - 1 Then
       Begin
-        iTrainingIDX := iTrainingIDX + 1;
-        iChunkIDX := 0;
+        iChunkIDX := iChunkIDX + 1;
+
+        If iChunkIDX > 3 Then
+        Begin
+          iTrainingIDX := iTrainingIDX + 1;
+          iChunkIDX := 0;
+        End
+        Else
+          iTrainingIDX := iTrainingIDX - (Options.ChunkSize - 1);
       End
-      Else
-        iTrainingIDX := iTrainingIDX - (Options.ChunkSize - 1);
+      Else}
+      iTrainingIDX := iTrainingIDX + 1;
     End
-    Else}
-    iTrainingIDX := iTrainingIDX + 1;
-  End
-  Else
-  Begin
-    iChunkIDX := 0;
-    iTrainingIDX := 0;
-    CompletedRuns := CompletedRuns + 1;
+    Else
+    Begin
+      iChunkIDX := 0;
+      iTrainingIDX := 0;
+      CompletedRuns := CompletedRuns + 1;
 
-    // lade den nächsten Imageblock (jeweils 10000 Bilder)
-    iImageBlock := iImageBlock + 1;
-    If iImageBlock > c_MaxImageBlock Then
-      iImageBlock := 1;
+      // lade den nächsten Imageblock (jeweils 10000 Bilder)
+      iImageBlock := iImageBlock + 1;
+      If iImageBlock > c_MaxImageBlock Then
+        iImageBlock := 1;
 
-    Class_Imaging.LoadCifar_ADDTrainData(
-      'c:\Entwicklung\Projekte\ALOBV\Delphi\Data\cifar-10-batches-bin\data_batch_' + inttostr(iImageBlock) + '.bin', '',
-      Cifar10);
+      Class_Imaging.LoadCifar_ADDTrainData(
+        sDataPath + 'data_batch_' + inttostr(iImageBlock) + '.bin',
+        sDataPath + 'batches.meta.txt',
+        Cifar10);
 
-    Net.Export;
+      Net.Export;
+    End;
+  Except
+    On e: Exception Do
+    Begin
+      FRMMain.StatusBar.SimpleText := 'ERROR: ' + e.Message;
+    End
   End;
 End;
 
