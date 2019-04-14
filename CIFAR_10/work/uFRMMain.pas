@@ -1,3 +1,7 @@
+{ ===============================================================================
+
+
+  =============================================================================== }
 Unit uFRMMain;
 
 Interface
@@ -5,7 +9,6 @@ Interface
 Uses
   Windows,
   Messages,
-  SysUtils,
   Variants,
   Classes,
   Graphics,
@@ -13,6 +16,7 @@ Uses
   Forms,
   Dialogs,
   StdCtrls,
+  System.SysUtils,
 
   uClasses_Types,
   uClass_CNN,
@@ -23,11 +27,13 @@ Uses
   TeEngine,
   TeeProcs,
   Chart,
-  Series, Menus, ComCtrls
-  ;
+  inifiles,
+  Series, Menus, ComCtrls, VclTee.TeeGDIPlus;
 
 Const
   c_PredictIMageCount = 100;
+  c_accordance=3;
+
 Type
   TInfoCMD = Procedure(iCMD: Integer; Var Data) Of Object;
 
@@ -55,7 +61,7 @@ Type
     s: String;
 
     iRuns: Integer;
-    iStatRuns: Integer;                 // beginnt nach jeder Ausgabe neu...
+    iStatRuns: Integer; // beginnt nach jeder Ausgabe neu...
     CompletedRuns: Integer;
 
     StartTicks: int64;
@@ -64,12 +70,16 @@ Type
     AVGRunsPerSec: Integer;
     iDisplayLayerIDX: Integer;
 
-    sDataPath: String;
     LearningInfo: TLearningInfo;
   public
 
     InfoCMD: TInfoCMD;
     bDebug: Boolean;
+
+    bMakePrediction: Boolean;
+
+    sWeightsFilename: String;
+    sResultsFilename: String;
 
     Constructor create;
     Procedure Init;
@@ -77,6 +87,11 @@ Type
     Procedure Execute; override;
     Procedure Learn;
     Procedure Sync;
+
+    function LoadDefinition: Boolean;
+
+    Procedure StoreResults(sFilename: String; iRun_Train: Integer;
+      dLoss_Train: Single; dAcc_Train: Single; dAcc_Test: Single);
   End;
 
   { TFRMMain }
@@ -86,30 +101,38 @@ Type
     lblRuns: TLabel;
     lblLoss: TLabel;
     Panel1: TPanel;
-    panButtons: TPanel;
-    Chart1: TChart;
-    Image1: TImage;
-    imgPrediction: TImage;
+    imgDebug: TImage;
     btnStart: TButton;
-    btnNext: TButton;
     StatusBar: TStatusBar;
     MainMenu1: TMainMenu;
     File1: TMenuItem;
-    Laod1: TMenuItem;
+    Load1: TMenuItem;
     Store1: TMenuItem;
     N1: TMenuItem;
     Close1: TMenuItem;
-    btnPrev: TButton;
     cbDebug: TCheckBox;
+    Panel2: TPanel;
+    panButtons: TPanel;
+    btnPrev: TButton;
+    btnNext: TButton;
+    btnTest: TButton;
+    cbUseChunk: TCheckBox;
+    cbShowWeights: TCheckBox;
+    Chart1: TChart;
+    ScrollBox1: TScrollBox;
+    imgPrediction: TImage;
     Procedure btnStartClick(Sender: TObject);
     Procedure FormDestroy(Sender: TObject);
     Procedure btnNextClick(Sender: TObject);
     Procedure FormCreate(Sender: TObject);
     Procedure cbDebugClick(Sender: TObject);
-    Procedure Image1Click(Sender: TObject);
     Procedure btnPrevClick(Sender: TObject);
     Procedure Store1Click(Sender: TObject);
-    Procedure Laod1Click(Sender: TObject);
+    Procedure Load1Click(Sender: TObject);
+    Procedure FormResize(Sender: TObject);
+    Procedure btnTestClick(Sender: TObject);
+    procedure cbUseChunkClick(Sender: TObject);
+    procedure FormShow(Sender: TObject);
   private
     { Private-Deklarationen }
   public
@@ -118,25 +141,27 @@ Type
     iDisplayLayerIDX: Integer;
 
     iPred: Integer;
+    dLastPredicion: Single;
 
     // Chart
     lsLoss: TLineSeries;
     lsTrainAcc: TLineSeries;
+    lsTestAcc: TLineSeries;
 
     Procedure BuildButtons(Net: TNet);
     Procedure btnLayerlick(Sender: TObject);
     Procedure AusgabeBilder(iLayerIDX: Integer; Net: TNet);
     Procedure InfoCMD(iCMD: Integer; Var Data);
-    Procedure Prediction;
+    Procedure Prediction(bSilent: Boolean);
+
   End;
 
 Var
-  FRMMain           : TFRMMain;
+  FRMMain: TFRMMain;
 
 Implementation
 
 {$R *.dfm}
-
 // ==============================================================================
 // Methode:
 // Datum  : 07.07.2017
@@ -146,25 +171,25 @@ Implementation
 
 Procedure TFRMMain.AusgabeBilder(iLayerIDX: Integer; Net: TNet);
 Var
-  c_PicPerRow       : Integer;
-  s                 : TLayer;
-  bmp               : TBitmap;
-  vol               : TVolume;
+  c_PicPerRow: Integer;
+  s: TLayer;
+  bmp: TBitmap;
+  vol: TVolume;
   i, j, k, d, iRow, iwidth, x, y: Integer;
-  Class_Imaging     : TClass_Imaging;
+  Class_Imaging: TClass_Imaging;
 
   // die Bildposition berechnen
   Procedure NextXY;
   Begin
     x := x + iwidth + 5;
-    If x + iwidth >= Image1.Width Then
+    If x + iwidth >= imgDebug.Width Then
     Begin
       x := 5;
       y := y + iwidth + 5
     End;
   End;
 
-  // die Bildposition berechnen
+// die Bildposition berechnen
   Procedure NextLn;
   Begin
     x := 5;
@@ -173,42 +198,43 @@ Var
 
   Procedure Textout(s: String);
   Begin
-    Image1.Canvas.Textout(x, y, s);
+    imgDebug.Canvas.Textout(x, y, s);
 
     x := 5;
-    y := y + Image1.Canvas.TextHeight(s);
+    y := y + imgDebug.Canvas.TextHeight(s);
   End;
 
   Procedure TextoutMinMax(s: String; a: TMyArray);
   Var
-    mm              : TMinMax;
+    mm: TMinMax;
   Begin
     mm := Global.maxmin(a);
-    Image1.Canvas.Textout(x, y, Format('%s  Max:%2.5f Min: %2.5f', [s, mm.maxv, mm.minv]));
+    imgDebug.Canvas.Textout(x, y, Format('%s  Max:%2.5f Min: %2.5f',
+      [s, mm.maxv, mm.minv]));
     x := 5;
-    y := y + Image1.Canvas.TextHeight(s);
+    y := y + imgDebug.Canvas.TextHeight(s);
 
   End;
 
 Begin
-  If Not Image1.Canvas.TryLock Then
+  If Not imgDebug.Canvas.TryLock Then
     exit;
 
   x := 5;
   y := 5;
 
-  //Image1.Canvas.Lock;
+  // imgDebug.Canvas.Lock;
 
   // leere den Canvas
-  Image1.Canvas.brush.color := clBlack;
-  Image1.Canvas.Font.color := clWhite;
-  Image1.Canvas.Rectangle(0, 0, Image1.Width, Image1.Height);
+  imgDebug.Canvas.brush.color := clBlack;
+  imgDebug.Canvas.Font.color := clWhite;
+  imgDebug.Canvas.Rectangle(0, 0, imgDebug.Width, imgDebug.Height);
 
   s := Net.Layers[iLayerIDX];
   bmp := TBitmap.create;
   Try
     Class_Imaging := TClass_Imaging.create;
-    iwidth := Image1.Width Div 10;
+    iwidth := imgDebug.Width Div 10;
 
     TextoutMinMax('INPUT w ', TLayer(Net.Layers[0]).out_act.w);
 
@@ -216,92 +242,94 @@ Begin
     vol := TLayer(Net.Layers[0]).out_act;
 
     Class_Imaging.vol_to_bmp(vol, bmp, false);
-    Image1.Canvas.StretchDraw(
-      rect(x, y, x + iwidth, y + iwidth), bmp);
+    imgDebug.Canvas.StretchDraw(rect(x, y, x + iwidth, y + iwidth), bmp);
     NextLn;
 
     TextoutMinMax('INPUT dw ', TLayer(Net.Layers[0]).out_act.dw);
     Class_Imaging.vol_to_bmp(vol, bmp, true);
-    Image1.Canvas.StretchDraw(
-      rect(x, y, x + iwidth, y + iwidth), bmp);
+    imgDebug.Canvas.StretchDraw(rect(x, y, x + iwidth, y + iwidth), bmp);
 
     NextLn;
 
-    Textout(s.layer_type + ' FWTime:' + inttostr(s.fwTime) + ' BWTime:' + inttostr(s.bwTime));
+    Textout(s.layer_type + ' FWTime:' + inttostr(s.fwTime) + ' BWTime:' +
+      inttostr(s.bwTime));
 
-    iwidth := 20;
+    iwidth := 32;
 
     If s Is TConvLayer Then
     Begin
 
-      //iwidth := Image1.Width Div (TConvLayer(s).out_depth * TConvLayer(s).filters.Buffer[0].n Div 50);
+      // iwidth := imgDebug.Width Div (TConvLayer(s).out_depth * TConvLayer(s).filters.Buffer[0].n Div 50);
+      if cbShowWeights.Checked then
+      begin
 
-      Textout('FILTER Weights');
-      // die Gewichte ausgeben
-      For i := 0 To TConvLayer(s).out_depth - 1 Do
-      Begin
-        vol := TConvLayer(s).filters.Buffer[i];
-
-        If iLayerIDX = 1 Then
+        Textout('FILTER Weights');
+        // die Gewichte ausgeben
+        For i := 0 To TConvLayer(s).out_depth - 1 Do
         Begin
-          Class_Imaging.vol_to_bmpCol(vol, bmp, false);
+          vol := TConvLayer(s).filters.Buffer[i];
 
-          Image1.Canvas.StretchDraw(
-            rect(x, y, x + iwidth, y + iwidth), bmp);
-
-          NextXY;
-        End
-        Else
-        Begin
-          For j := 0 To vol.depth - 1 Do
+          If iLayerIDX <= 2 Then
           Begin
-            Class_Imaging.vol_to_bmpSW(vol, bmp, false, j);
+            Class_Imaging.vol_to_bmpCol(vol, bmp, false);
 
-            Image1.Canvas.StretchDraw(
-              rect(x, y, x + iwidth, y + iwidth), bmp);
+            imgDebug.Canvas.StretchDraw(rect(x, y, x + iwidth,
+              y + iwidth), bmp);
 
             NextXY;
+          End
+          Else
+          Begin
+            For j := 0 To vol.depth - 1 Do
+            Begin
+              Class_Imaging.vol_to_bmpSW(vol, bmp, false, j);
+
+              imgDebug.Canvas.StretchDraw(rect(x, y, x + iwidth,
+                y + iwidth), bmp);
+
+              NextXY;
+
+            End;
 
           End;
 
         End;
 
-      End;
+        NextLn;
 
-      NextLn;
-
-      Textout('FILTER Grads');
-      // die Gradienten ausgeben
-      For i := 0 To TConvLayer(s).out_depth - 1 Do
-      Begin
-        vol := TConvLayer(s).filters.Buffer[i];
-        If iLayerIDX = 1 Then
+        Textout('FILTER Grads');
+        // die Gradienten ausgeben
+        For i := 0 To TConvLayer(s).out_depth - 1 Do
         Begin
-          Class_Imaging.vol_to_bmpCol(vol, bmp, true);
-
-          Image1.Canvas.StretchDraw(
-            rect(x, y, x + iwidth, y + iwidth),
-            bmp);
-          NextXY;
-        End
-        Else
-        Begin
-          For j := 0 To vol.depth - 1 Do
+          vol := TConvLayer(s).filters.Buffer[i];
+          If iLayerIDX <= 2 Then
           Begin
-            Class_Imaging.vol_to_bmpSW(vol, bmp, false, j);
+            Class_Imaging.vol_to_bmpCol(vol, bmp, true);
 
-            Image1.Canvas.StretchDraw(
-              rect(x, y, x + iwidth, y + iwidth), bmp);
-
+            imgDebug.Canvas.StretchDraw(rect(x, y, x + iwidth,
+              y + iwidth), bmp);
             NextXY;
+          End
+          Else
+          Begin
+            For j := 0 To vol.depth - 1 Do
+            Begin
+              Class_Imaging.vol_to_bmpSW(vol, bmp, false, j);
+
+              imgDebug.Canvas.StretchDraw(rect(x, y, x + iwidth,
+                y + iwidth), bmp);
+
+              NextXY;
+
+            End;
 
           End;
-
         End;
-      End;
+      end;
+
     End;
 
-    iwidth := Image1.Width Div 30;
+    iwidth := 32;
     // AUSGANGS GEWICHTE
     NextLn;
     NextLn;
@@ -313,41 +341,45 @@ Begin
     Begin
 
       Class_Imaging.vol_to_bmpSW(vol, bmp, false, j);
-      Image1.Canvas.StretchDraw(
-        rect(x, y, x + iwidth, y + iwidth
-        ), bmp);
+      imgDebug.Canvas.StretchDraw(rect(x, y, x + iwidth, y + iwidth), bmp);
       NextXY;
     End;
 
     // AUSGANGS GRADIENTEN (NUR NICHT SOFTMAX)
-    If Not (s Is TSoftMaxLayer) Then
+    If Not(s Is TSoftMaxLayer) Then
     Begin
       NextLn;
       TextoutMinMax('Output dw ', vol.dw);
       For j := 0 To vol.depth Do
       Begin
         Class_Imaging.vol_to_bmpSW(vol, bmp, true, j);
-        Image1.Canvas.StretchDraw(rect(x, y, x + iwidth, y + iwidth), bmp);
+        imgDebug.Canvas.StretchDraw(rect(x, y, x + iwidth, y + iwidth), bmp);
         NextXY;
       End;
     End;
 
-    Image1.Refresh;
-    Image1.Repaint;
+    imgDebug.Refresh;
+    imgDebug.Repaint;
   Finally
     bmp.Free;
     Class_Imaging.Free;
   End;
 
-  Image1.Canvas.UnLock;
+  imgDebug.Canvas.UnLock;
 End;
+// ==============================================================================
+// Methode:
+// Datum  : 07.07.2017
+// Autor  : M.Höller-Schlieper
+//
+// ==============================================================================
 
 Procedure TFRMMain.btnStartClick(Sender: TObject);
 Begin
   If LearnThread.Suspended Then
   Begin
-    //LearnThread.iRuns := 0;
-    //LearnThread.StartTicks := GettickCount;
+    // LearnThread.iRuns := 0;
+    // LearnThread.StartTicks := GettickCount;
     LearnThread.Resume;
 
     btnStart.caption := 'Stopp';
@@ -358,12 +390,18 @@ Begin
     btnStart.caption := 'Start'
   End;
 End;
+// ==============================================================================
+// Methode:
+// Datum  : 07.07.2017
+// Autor  : M.Höller-Schlieper
+//
+// ==============================================================================
 
 Procedure TFRMMain.BuildButtons(Net: TNet);
 Var
-  i                 : Integer;
-  btn               : TButton;
-  s                 : String;
+  i: Integer;
+  btn: TButton;
+  s: String;
 Begin
   For i := 0 To 100 Do
   Begin
@@ -376,16 +414,15 @@ Begin
 
   For i := 0 To Net.Layers.Count - 1 Do
   Begin
-    s := inttostr(i) + '. ' +
-      TLayer(Net.Layers[i]).sName + ' ' +
+    s := inttostr(i) + '. ' + TLayer(Net.Layers[i]).sName + ': ' +
       inttostr(TLayer(Net.Layers[i]).out_sx) + 'x' +
       inttostr(TLayer(Net.Layers[i]).out_sy) + 'x' +
       inttostr(TLayer(Net.Layers[i]).out_depth);
 
-    btn := TButton.Create(panButtons);
+    btn := TButton.create(panButtons);
     btn.Name := 'NETBTN' + inttostr(i);
     btn.Parent := panButtons;
-    btn.Caption := s;
+    btn.caption := s;
     btn.Tag := i;
     btn.Width := panButtons.Width;
     btn.left := 0;
@@ -393,40 +430,73 @@ Begin
     btn.OnClick := btnLayerlick;
   End;
 End;
+// ==============================================================================
+// Methode:
+// Datum  : 07.07.2017
+// Autor  : M.Höller-Schlieper
+//
+// ==============================================================================
 
 Procedure TFRMMain.btnLayerlick(Sender: TObject);
 Begin
   iDisplayLayerIDX := TButton(Sender).Tag;
 End;
+// ==============================================================================
+// Methode:
+// Datum  : 07.07.2017
+// Autor  : M.Höller-Schlieper
+//
+// ==============================================================================
 
 Procedure TFRMMain.btnNextClick(Sender: TObject);
 Begin
-  If iPred + c_PredictImageCount < length(LearnThread.Class_Imaging.TestData) Then
-    iPred := iPred + c_PredictImageCount
+  If iPred + c_PredictIMageCount <
+    length(LearnThread.Class_Imaging._TestData) Then
+    iPred := iPred + c_PredictIMageCount
   Else
-    iPred := length(LearnThread.Class_Imaging.TestData) - c_PredictImageCount;
+    iPred := length(LearnThread.Class_Imaging._TestData) - c_PredictIMageCount;
 
-  Prediction;
+  // Prediction;
+  LearnThread.bMakePrediction := true;
+
+  if LearnThread.Suspended then
+    Prediction(false);
 End;
+// ==============================================================================
+// Methode:
+// Datum  : 07.07.2017
+// Autor  : M.Höller-Schlieper
+//
+// ==============================================================================
 
 Procedure TFRMMain.btnPrevClick(Sender: TObject);
 Begin
-  If iPred - c_PredictImageCount >= 0 Then
-    iPred := iPred - c_PredictImageCount
+  If iPred - c_PredictIMageCount >= 0 Then
+    iPred := iPred - c_PredictIMageCount
   Else
     iPred := 0;
-  Prediction;
+  // Prediction;
+  LearnThread.bMakePrediction := true;
+
+  if LearnThread.Suspended then
+    Prediction(false);
 End;
+// ==============================================================================
+// Methode:
+// Datum  : 07.07.2017
+// Autor  : M.Höller-Schlieper
+//
+// ==============================================================================
 
 Procedure TFRMMain.cbDebugClick(Sender: TObject);
 Begin
   LearnThread.bDebug := cbDebug.Checked;
 End;
 
-Procedure TFRMMain.Image1Click(Sender: TObject);
-Begin
-
-End;
+procedure TFRMMain.cbUseChunkClick(Sender: TObject);
+begin
+  LearnThread.Options.ChunkEnabled := cbUseChunk.Checked;
+end;
 
 // ==============================================================================
 // Methode:
@@ -441,11 +511,14 @@ Begin
   LearnThread.InfoCMD := InfoCMD;
   LearnThread.Init;
 
+  LearnThread.bDebug := true;
+
   lsLoss := TLineSeries.create(Nil);
   lsLoss.Clear;
   lsLoss.ParentChart := Chart1;
   lsLoss.Name := 'Loss';
   lsLoss.Identifier := 'Loss';
+  lsLoss.color := clRed;
   // lsLoss.VertAxis := TVertAxis.aLeftAxis;
 
   lsTrainAcc := TLineSeries.create(Nil);
@@ -453,9 +526,15 @@ Begin
   lsTrainAcc.ParentChart := Chart1;
   lsTrainAcc.Name := 'ACC';
   lsTrainAcc.Identifier := 'ACC';
-  // lsTrainAcc.VertAxis := TVertAxis.aRightAxis; // aBothVertAxis;
+  lsTrainAcc.color := clGreen;
 
-  LearnThread.bDebug := cbDebug.Checked;
+  // lsTrainAcc.VertAxis := TVertAxis.aRightAxis; // aBothVertAxis;
+  lsTestAcc := TLineSeries.create(Nil);
+  lsTestAcc.Clear;
+  lsTestAcc.ParentChart := Chart1;
+  lsTestAcc.Name := 'Test_acc';
+  lsTestAcc.Identifier := 'Test Acc';
+  lsTestAcc.color := clBlue;
 
   iPred := 0;
 End;
@@ -472,11 +551,12 @@ Begin
   // den THREAD NUR SO beenden!!!!!!!!!!!!!!
   LearnThread.Suspend;
   LearnThread.Net.Export;
-  LearnThread.FreeOnTerminate := True;
+  LearnThread.FreeOnTerminate := true;
   LearnThread.Terminate;
 
   lsTrainAcc.Free;
   lsLoss.Free;
+  lsTestAcc.Free;
 
 End;
 
@@ -490,23 +570,23 @@ End;
 Procedure TFRMMain.InfoCMD(iCMD: Integer; Var Data);
 Var
   i, k, ixPos, iyPOs: Integer;
-  ResultVol         : TVolume;
-  iSec              : Integer;
-  TrainReg          : TTrainReg;
-  s                 : String;
-  iPredict          : Integer;
+  ResultVol: TVolume;
+  iSec: Integer;
+  TrainReg: TTrainReg;
+  s: String;
+  iPredict: Integer;
   iAnzGleicherSaetze: Integer;
-  Predict           : TPredict;
-  PredictList       : TList;
-  bmp               : TBitmap;
-  TrainBmp          : TBitmap;
-  Class_Imaging     : TClass_Imaging;
-  iBMPWidth         : Integer;
+  Predict: TPredict;
+  PredictList: TList;
+  bmp: TBitmap;
+  TrainBmp: TBitmap;
+  Class_Imaging: TClass_Imaging;
+  iBMPWidth: Integer;
 Begin
   Try
 
     Case iCMD Of
-      -1:
+      - 1:
         Begin
           BuildButtons(TNet(Data));
           lblRuns.caption := 'Loading images';
@@ -523,16 +603,22 @@ Begin
 
           If TrainReg.iRunStat <> 0 Then
           Begin
-            lblLoss.caption := Format('FWD-Time: %3.0f   BWD-Time: %3.0f    Loss: %2.5f     L2 Decay Loss: %2.8f   Train Acc: %2.8f',
-              [TrainReg.fwd_time / 1000,
-              TrainReg.bwd_time / 1000,
-                TrainReg.SumCostLoss / TrainReg.iRunStat,
-                TrainReg.Suml2decayloss / TrainReg.iRunStat,
-                TrainReg.TrainingAccuracy / TrainReg.iRunStat
-                ]);
+            lblLoss.caption :=
+              Format('FWD-Time: %3.0f   BWD-Time: %3.0f    Loss: %2.3f     ' +
+              'L2 Decay Loss: %2.4f   Train Acc: %2.4f    Test ACC: %2.2f%%',
+              [TrainReg.fwd_time / 1000, TrainReg.bwd_time / 1000,
+              TrainReg.SumCostLoss / TrainReg.iRunStat, TrainReg.Suml2decayloss
+              / TrainReg.iRunStat, TrainReg.TrainingAccuracy /
+              TrainReg.iRunStat, dLastPredicion * 100]);
 
-            lsLoss.AddXY(TrainReg.iRuns, TrainReg.SumCostLoss / TrainReg.iRunStat);
-            lsTrainAcc.AddXY(TrainReg.iRuns, TrainReg.TrainingAccuracy / TrainReg.iRunStat)
+            lsLoss.AddXY(TrainReg.iRuns, TrainReg.SumCostLoss /
+              TrainReg.iRunStat);
+            lsTrainAcc.AddXY(TrainReg.iRuns, TrainReg.TrainingAccuracy /
+              TrainReg.iRunStat);
+
+            LearnThread.StoreResults(LearnThread.sResultsFilename,
+              TrainReg.iRuns, TrainReg.SumCostLoss / TrainReg.iRunStat,
+              TrainReg.TrainingAccuracy / TrainReg.iRunStat, dLastPredicion);
           End;
         End;
       2:
@@ -544,119 +630,105 @@ Begin
           iSec := (GettickCount - LearnThread.StartTicks) Div 1000;
           If iSec > 0 Then
           Begin
-            lblRuns.caption :=
-              'RUNS:' + inttostr(LearnThread.iRuns) +
+            lblRuns.caption := 'RUNS:' + inttostr(LearnThread.iRuns) +
               '   Training:' + inttostr(LearnThread.iTrainingIDX) +
               '   CompletedRuns:' + inttostr(LearnThread.CompletedRuns) +
-              '   Time: ' + Format('%2.2dT %2.2d:%2.2d:%2.2d', [(iSec Div (3600 * 24)), (iSec Div 3600) Mod 24, (iSec Div 60) Mod 60, iSec Mod 60]) +
-            '   AVG-Time[runs/sec]:' + Format('%2.5d', [LearnThread.AVGRunsPerSec])
-              ;
+              '   Time: ' + Format('%2.2dT %2.2d:%2.2d:%2.2d',
+              [(iSec Div (3600 * 24)), (iSec Div 3600) Mod 24,
+              (iSec Div 60) Mod 60, iSec Mod 60]) + '   AVG-Time[runs/sec]:' +
+              Format('%2.5d', [LearnThread.AVGRunsPerSec]);
           End;
         End;
+      4:
+        begin
+          Prediction(false);
+          LearnThread.bMakePrediction := false;
+        end;
+      5:
+        Begin
+          Prediction(true);
+        End;
+
     End;
-  Finally
+  except
   End;
 End;
 
 { TLearnThread }
 
+// ==============================================================================
+// Methode:
+// Datum  : 07.07.2017
+// Autor  : M.Höller-Schlieper
+//
+// ==============================================================================
+
 Constructor TLearnThread.create;
 Begin
   Inherited create(true);
 
-  sDataPath := '.\Data\cifar-10-batches-bin\';
-
   Priority := tpHighest;
-  SetProcessAffinityMask(self.Handle, $FF);
+  SetProcessAffinityMask(self.Handle, 2);
 
   FreeOnTerminate := false;
 End;
+// ==============================================================================
+// Methode:
+// Datum  : 07.07.2017
+// Autor  : M.Höller-Schlieper
+//
+// ==============================================================================
 
 Procedure TLearnThread.Init;
 Var
-  i                 : Integer;
+  i: Integer;
+  sDataPath: String;
+  ActPic: TCifarImage;
 Begin
   Try
-
     Layer_Def := TList.create;
     Net := TNet.create;
     Options := TTrainerOpt.create;
 
     iDisplayLayerIDX := 1;
 
-    // Die Layer-Definition......
-    Layer_Def.Clear;
-    Layer_Def.ADD(CreateOpt_Input('input', 32, 32, 3));
-    Layer_Def.ADD(CreateOpt_Conv('conv', 5, 16, 0, 0, 'relu'));
-    Layer_Def.ADD(CreateOpt_Pool('pool', 2, 2));
-    Layer_Def.ADD(CreateOpt_Conv('conv', 5, 20, 1, 2, 'relu'));
-    Layer_Def.ADD(CreateOpt_Pool('pool', 2, 2));
-    Layer_Def.ADD(CreateOpt_Conv('conv', 5, 20, 1, 2, 'relu'));
-    Layer_Def.ADD(CreateOpt_Pool('pool', 2, 2));
-    Layer_Def.ADD(CreateOpt_Hidden('softmax', 'softmax', 10, 'NONE'));
-    Net.makeLayers(Layer_Def);
+    if LoadDefinition then
+    begin
 
-    If assigned(InfoCMD) Then
-      InfoCMD(-1, Net);
+      // =========================================================================
+      // erzeuge den Trainer....
+      Trainer := TTrainer.create(Net, Options);
+      // ========================================================================
+      // zum Importieren müssen die Buffer alle erzeugt sein,
+      // daher ein Vorwärtslauf....
 
-    // Bilder laden
-    iImageBlock := 1;
-    Class_Imaging := TClass_Imaging.create;
+      ActPic := Class_Imaging.GetTrainVol(0);
+      Net.Forward(ActPic.PicVolume, false);
+      Net.Import;
 
-    Class_Imaging.LoadCifar_ADDTrainData(
-      sDataPath + 'data_batch_' + inttostr(iImageBlock) + '.bin',
-      sDataPath + 'batches.meta.txt',
-      Cifar10);
+      ActPic.PicVolume.Free;
 
-    Class_Imaging.LoadCifar_ADDTestData(sDataPath + '\test_batch.bin', sDataPath + 'batches.meta.txt', Cifar10);
-
-    ResultArray := TMyArray.create(10); // es gibt 10 Klasse,
-
-    // ===============================================================================
-    // Lernen....
-    // ===============================================================================
-
-    // die Parameter
-    Options.method := 'adadelta';
-    Options.batch_size := 15;           // nach jedem Batch werden die Gradienten gelöscht!
-    Options.learning_rate := 0.005;
-    Options.momentum := 0.9;
-    Options.l1_decay := 0;
-    Options.l2_decay := 0.0001;
-    Options.ro := 0.95;
-    Options.eps := 1E-6;
-
-    //=========================================================================
-    // DER CHUNK
-    // ein Block an Infomationen, der sicher gelernt sein muss, bevor der nächste Chunk gelernt werden kann
-    // wird eine Information nicht gelernt, so kommt sie in den nächsten Chank zum wiederholten Lernen
-    Options.ChunkSize := 40 * Options.batch_size;
-    Options.ChunkAccLikeliHood := 0.8;  // Mindest-W-keit, dass eine Information als gelernt akzeptiert wird
-    Options.ChunkNonAccLikeliHood := 0.2; // Mindest-W-keit, dass eine Information als gelernt akzeptiert wird
-
-    //=========================================================================
-    // erzeuge den Trainer....
-    Trainer := TTrainer.create(Net, Options);
-    // ========================================================================
-    // zum Importieren müssen die Buffer alle erzeugt sein,
-    // daher ein Vorwärtslauf....
-
-    Net.Forward(Class_Imaging.TrainData[0].PicVolume, false);
-    Net.Import;
-
+      FRMMain.cbUseChunk.Checked := Options.ChunkEnabled;
+    end
+    else
+     showmessage('No definition file');
   Finally
     If assigned(InfoCMD) Then
       InfoCMD(0, TrainReg);
 
-    //Resume;
+    // Resume;
   End;
-
-  FRMMain.Prediction;
 End;
+// ==============================================================================
+// Methode:
+// Datum  : 07.07.2017
+// Autor  : M.Höller-Schlieper
+//
+// ==============================================================================
 
 Destructor TLearnThread.Destroy;
 Var
-  i                 : Integer;
+  i: Integer;
 
 Begin
   ResultArray.Free;
@@ -670,6 +742,7 @@ Begin
   Layer_Def.Free;
   Net.Free;
   Options.Free;
+
   Inherited;
 End;
 
@@ -680,12 +753,46 @@ Begin
   iStartTime := StartTicks;
   iRuns := 0;
   iChunkIDX := 0;
+  iTrainingIDX := 0;
+
+  self.Priority := tpTimeCritical;
+  SetPriorityClass(self.Handle, REALTIME_PRIORITY_CLASS);
+  setThreadAffinityMask(Handle, 1 Shl 2);
+
   While Not Terminated Do
   Begin
     Learn;
   End;
 
 End;
+// ==============================================================================
+// Methode:
+// Datum  : 07.07.2017
+// Autor  : M.Höller-Schlieper
+//
+// ==============================================================================
+
+procedure TLearnThread.StoreResults(sFilename: String; iRun_Train: Integer;
+  dLoss_Train, dAcc_Train, dAcc_Test: Single);
+var
+  tf: TextFile;
+  fs: TFormatsettings;
+begin
+  exit;
+  fs.DecimalSeparator := ',';
+  Assignfile(tf, sFilename);
+  if fileexists(sFilename) then
+    Append(tf)
+  else
+  begin
+    rewrite(tf);
+    writeln(tf, 'Runs;Loss Train;Acc Train;Acc Test');
+  end;
+  writeln(tf, Format('%2.2d;%2.3f;%2.3f;%2.3f', [iRun_Train, dLoss_Train,
+    dAcc_Train, dAcc_Test], fs));
+  closeFile(tf);
+
+end;
 
 Procedure TLearnThread.Sync;
 Begin
@@ -708,7 +815,7 @@ Begin
       End;
     End;
 
-    If iRuns Mod 20 = 0 Then
+    If iRuns Mod 10 = 0 Then
     Begin
       If assigned(InfoCMD) Then
         InfoCMD(3, Net);
@@ -722,35 +829,58 @@ Begin
       iStartTime := GettickCount;
       TrainReg.iRunStat := 0;
     End;
+
+    if bMakePrediction then
+      If assigned(InfoCMD) Then
+        InfoCMD(4, Net);
+
+    If iRuns Mod 500 = 1 Then
+    Begin
+      If assigned(InfoCMD) Then
+        InfoCMD(5, Net);
+
+    End;
   Except
   End;
 End;
+// ==============================================================================
+// Methode:
+// Datum  : 07.07.2017
+// Autor  : M.Höller-Schlieper
+//
+// ==============================================================================
 
 Procedure TLearnThread.Learn;
+var
+  ActPic: TCifarImage;
 Begin
   Try
+    ActPic := Class_Imaging.GetTrainVol(iTrainingIDX);
 
-    If Class_Imaging.TrainData[iTrainingIDX].PicVolume <> Nil Then
+    If ActPic.PicVolume <> Nil Then
     Begin
       iRuns := iRuns + 1;
 
-      TPArraysingle(ResultArray.Buffer^)[0] := Class_Imaging.TrainData[iTrainingIDX].Cat1;
+      TPArrayDouble(ResultArray.Buffer^)[0] := ActPic.Detail;
 
       // eine Epoche trainieren
-      TrainReg := Trainer.train(Class_Imaging.TrainData[iTrainingIDX].PicVolume, ResultArray);
+      TrainReg := Trainer.train(ActPic.PicVolume, ResultArray);
 
       // Lernerfolg prüfen....
-      If Net.getPrediction = Class_Imaging.TrainData[iTrainingIDX].Cat1 Then
+      If Net.getPrediction = ActPic.Detail Then
         TrainReg.TrainingAccuracy := TrainReg.TrainingAccuracy + 1;
 
       // die Kostenergebnisse summieren
       TrainReg.SumCostLoss := TrainReg.SumCostLoss + TrainReg.cost_loss;
-      TrainReg.Suml2decayloss := TrainReg.Suml2decayloss + TrainReg.l2_decay_loss;
+
+      TrainReg.Suml2decayloss := TrainReg.Suml2decayloss +
+        TrainReg.l2_decay_loss;
 
       TrainReg.iRunStat := TrainReg.iRunStat + 1;
 
       If TrainReg.iRunStat > 2 Then
-        AVGRunsPerSec := round(1000 / ((GettickCount - iStartTime) / TrainReg.iRunStat));
+        AVGRunsPerSec :=
+          round(1000 / ((GettickCount - iStartTime) / TrainReg.iRunStat));
 
       // alle 1000 Durchläufe speichern
       If iRuns Mod 1000 = 999 Then
@@ -760,24 +890,29 @@ Begin
     End;
 
     // Training von vorne, nach x Durchläufen
-    If iTrainingIDX < Class_IMaging.iImageCount_TrainData - 1 Then //high(Class_Imaging.TrainData) then
+    If iTrainingIDX < Class_Imaging.iImageCount_TrainData Then
     Begin
 
       // Behandlung von Chunks
-     { If iTrainingIDX Mod Options.ChunkSize = Options.ChunkSize - 1 Then
-      Begin
-        iChunkIDX := iChunkIDX + 1;
-
-        If iChunkIDX > 3 Then
+      if Options.ChunkEnabled then
+      begin
+        If iTrainingIDX Mod Options.ChunkSize = Options.ChunkSize - 1 Then
         Begin
-          iTrainingIDX := iTrainingIDX + 1;
-          iChunkIDX := 0;
+          iChunkIDX := iChunkIDX + 1;
+
+          If iChunkIDX >= Options.ChunkRepetitions Then
+          Begin
+            iTrainingIDX := iTrainingIDX + 1;
+            iChunkIDX := 0;
+          End
+          Else
+            iTrainingIDX := iTrainingIDX - (Options.ChunkSize - 1);
         End
         Else
-          iTrainingIDX := iTrainingIDX - (Options.ChunkSize - 1);
-      End
-      Else}
-      iTrainingIDX := iTrainingIDX + 1;
+          iTrainingIDX := iTrainingIDX + 1;
+      end
+      Else
+        iTrainingIDX := iTrainingIDX + 1;
     End
     Else
     Begin
@@ -790,49 +925,59 @@ Begin
       If iImageBlock > c_MaxImageBlock Then
         iImageBlock := 1;
 
-      Class_Imaging.LoadCifar_ADDTrainData(
-        sDataPath + 'data_batch_' + inttostr(iImageBlock) + '.bin',
-        sDataPath + 'batches.meta.txt',
-        Cifar10);
-
       Net.Export;
     End;
+    ActPic.PicVolume.Free;
+
   Except
     On e: Exception Do
     Begin
-      FRMMain.StatusBar.SimpleText := 'ERROR: ' + e.Message;
+      FRMMain.StatusBar.SimpleText := 'TLearnThread.Learn: ' + e.Message;
     End
   End;
 End;
+// ==============================================================================
+// Methode:
+// Datum  : 07.07.2017
+// Autor  : M.Höller-Schlieper
+//
+// ==============================================================================
 
-Procedure TFRMMain.Prediction;
+Procedure TFRMMain.Prediction(bSilent: Boolean);
+const
+  c_cols = 4;
 Var
   i, k, ixPos, iyPOs: Integer;
-  ResultVol         : TVolume;
-  iSec              : Integer;
-  TrainReg          : TTrainReg;
-  s                 : String;
-  iPredict          : Integer;
-  iAnzGleicherSaetze: Single;
-  Predict           : TPredict;
-  PredictList       : TList;
-  bmp               : TBitmap;
-  TrainBmp          : TBitmap;
-  Class_Imaging     : TClass_Imaging;
-  iBMPWidth         : Integer;
+  ResultVol: TVolume;
+  iSec: Integer;
+  // TrainReg: TTrainReg;
+  s: String;
+  iPredict: Integer;
+  iAnzGleicherSaetze: Double;
+  Predict: TPredict;
+  PredictList: TList;
+  bmp: TBitmap;
+  TrainBmp: TBitmap;
+  Class_Imaging: TClass_Imaging;
+  iBMPWidth: Integer;
+
+  ActPic: TCifarImage;
 Begin
   Class_Imaging := TClass_Imaging.create;
   iAnzGleicherSaetze := 0;
 
-  bmp := TBitmap.create;
-  bmp.Width := imgPrediction.Width;
-  bmp.height := imgPrediction.Height;
-  bmp.Canvas.brush.color := clBlack;
-  bmp.Canvas.Rectangle(0, 0, bmp.Width, bmp.Height);
+  if not bSilent then
+  begin
+    bmp := TBitmap.create;
+    bmp.Width := imgPrediction.Width;
+    bmp.Height := imgPrediction.Height;
+    bmp.Canvas.brush.color := clBlack;
+    bmp.Canvas.Rectangle(0, 0, bmp.Width, bmp.Height);
 
-  iBMPWidth := 60;
+    iBMPWidth := 60;
+  end;
 
-  TrainBmp := TBitmap.Create;
+  TrainBmp := TBitmap.create;
 
   iAnzGleicherSaetze := 0;
   Try
@@ -840,72 +985,120 @@ Begin
     For i := iPred To iPred + c_PredictIMageCount - 1 Do
     Begin
       Try
-        ixPos := 10 + (imgPrediction.width Div 3) * ((i - iPred) Mod 3);
-        iyPOs := (i - iPred) Div 3;
+        ixPos := 10 + (imgPrediction.Width Div c_cols) *
+          ((i - iPred) Mod c_cols);
+        iyPOs := (i - iPred) Div c_cols;
 
-        ResultVol := LearnThread.Net.forward(LearnThread.Class_Imaging.TestData[i].PicVolume, false);
+        ActPic := LearnThread.Class_Imaging.GetTestVol(i);
 
-        Class_Imaging.vol_to_bmp(LearnThread.Class_Imaging.TestData[i].PicVolume, TrainBmp, false);
-        bmp.Canvas.StretchDraw(Rect(ixPos, 10 + iyPOs * iBMPWidth, ixPos + iBMPWidth, 10 + (iyPOs + 1) * iBMPWidth), TrainBmp);
+        ResultVol := LearnThread.Net.Forward(ActPic.PicVolume, false);
 
-        PredictList := LearnThread.Net.getPrediction(3);
-        If PredictList.count >= 3 Then
+        if not bSilent then
+        begin
+          Class_Imaging.vol_to_bmp(ActPic.PicVolume, TrainBmp, false);
+          bmp.Canvas.StretchDraw(rect(ixPos, 10 + iyPOs * iBMPWidth,
+            ixPos + iBMPWidth, 10 + (iyPOs + 1) * iBMPWidth), TrainBmp);
+
+        end;
+
+        PredictList := LearnThread.Net.getPrediction(c_accordance);
+        If PredictList.Count >= c_accordance-2 Then
         Begin
           s := '';
-          For k := 0 To 2 Do
-          Begin
-            If LearnThread.Class_Imaging.TestData[i].Cat1 = TPredict(PredictList[k]).iLabel Then
-              bmp.Canvas.Font.Color := clGreen
-            Else
-              bmp.Canvas.Font.Color := clRed;
+          if not bSilent then
+          begin
+            bmp.Canvas.Font.Size := 7;
 
-            s := Format('%s %0.3f%%', [
-              LearnThread.Class_Imaging.sLabelTexts[TPredict(PredictList[k]).iLabel],
-                TPredict(PredictList[k]).sLikeliHood * 100]);
+            For k := 0 To c_accordance-1 Do
+            Begin
+              If ActPic.Detail = TPredict(PredictList[k]).iLabel Then
+                bmp.Canvas.Font.color := clGreen
+              Else
+                bmp.Canvas.Font.color := clWhite;
 
-            bmp.Canvas.TextOut(iBMPWidth + ixPos, 10 + iyPOs * iBMPWidth + k * (bmp.Canvas.textheight(s) + 3), s);
-          End;
+              s := Format('%0.0d.%s %0.1f%%',
+                [k + 1, LearnThread.Class_Imaging.sDetailTexts
+                [TPredict(PredictList[k]).iLabel], TPredict(PredictList[k])
+                .sLikeliHood * 100]);
 
-          If (TPredict(PredictList[0]).iLabel = LearnThread.Class_Imaging.TestData[i].Cat1) Then
+              bmp.Canvas.Textout(iBMPWidth + ixPos + 3, 10 + iyPOs * iBMPWidth +
+                k * (bmp.Canvas.TextHeight(s)), s)
+
+            End;
+          end;
+
+          If (TPredict(PredictList[0]).iLabel = ActPic.Detail) Then
             iAnzGleicherSaetze := iAnzGleicherSaetze + 1
-          Else If (TPredict(PredictList[1]).iLabel = LearnThread.Class_Imaging.TestData[i].Cat1) Then
+          Else If (TPredict(PredictList[1]).iLabel = ActPic.Detail) Then
             iAnzGleicherSaetze := iAnzGleicherSaetze + 1
-          Else If (TPredict(PredictList[2]).iLabel = LearnThread.Class_Imaging.TestData[i].Cat1) Then
+          Else If (TPredict(PredictList[2]).iLabel = ActPic.Detail) Then
+            iAnzGleicherSaetze := iAnzGleicherSaetze + 1
+          Else If (TPredict(PredictList[3]).iLabel = ActPic.Detail) Then
+            iAnzGleicherSaetze := iAnzGleicherSaetze + 1
+          Else If (TPredict(PredictList[4]).iLabel = ActPic.Detail) Then
             iAnzGleicherSaetze := iAnzGleicherSaetze + 1;
 
         End;
         // Liste freigeben
-        For k := 0 To PredictList.count - 1 Do
+        For k := 0 To PredictList.Count - 1 Do
         Begin
           TPredict(PredictList[k]).Free;
           PredictList[k] := Nil;
         End;
       Finally
+        ActPic.PicVolume.Free;
         FreeandNil(PredictList);
       End;
     End;
   Except
+    On e: Exception Do
+    Begin
+      FRMMain.StatusBar.SimpleText := 'TFRMMain.Prediction: ' + e.Message;
+    End
+
   End;
 
-  bmp.Canvas.Font.color := clWhite;
-  bmp.Canvas.TextOut(10, bmp.Height - bmp.Canvas.TextHeight('XXX'),
-    Format('Result: %2.3f%%', [100 * iAnzGleicherSaetze / c_PredictIMageCount]));
+  dLastPredicion := iAnzGleicherSaetze / c_PredictIMageCount;
 
-  imgPrediction.Canvas.Draw(0, 0, bmp);
-  FreeandNil(bmp);
+  if LearnThread.TrainReg <> nil then
+    lsTestAcc.AddXY(LearnThread.TrainReg.iRuns, dLastPredicion);
+
+  if not bSilent then
+  begin
+    bmp.Canvas.Font.color := clWhite;
+    bmp.Canvas.Textout(10, 10, // bmp.Height - bmp.Canvas.TextHeight('XXX'),
+      Format('Pred: %2.1f%%', [100 * dLastPredicion]));
+
+    imgPrediction.Canvas.Draw(0, 0, bmp);
+    FreeandNil(bmp);
+  end;
   FreeandNil(TrainBmp);
-  FreeAndNil(Class_Imaging);
+  FreeandNil(Class_Imaging);
 End;
+// ==============================================================================
+// Methode:
+// Datum  : 07.07.2017
+// Autor  : M.Höller-Schlieper
+//
+// ==============================================================================
 
 Procedure TFRMMain.Store1Click(Sender: TObject);
 Begin
-  LearnThread.Net.CSVExport('.\test.csv', LearnThread.Trainer, LearnThread.LearningInfo);
+  LearnThread.Net.CSVExport('.\test.csv', LearnThread.Trainer,
+    LearnThread.LearningInfo);
 End;
+// ==============================================================================
+// Methode:
+// Datum  : 07.07.2017
+// Autor  : M.Höller-Schlieper
+//
+// ==============================================================================
 
-Procedure TFRMMain.Laod1Click(Sender: TObject);
+Procedure TFRMMain.Load1Click(Sender: TObject);
 Begin
 
-  LearnThread.Net.CSVImport('.\test.csv', LearnThread.Trainer, LearnThread.LearningInfo);
+  LearnThread.Net.CSVImport('.\test.csv', LearnThread.Trainer,
+    LearnThread.LearningInfo);
 
   If assigned(LearnThread.InfoCMD) Then
     LearnThread.InfoCMD(-1, LearnThread.Net);
@@ -914,5 +1107,240 @@ Begin
 
 End;
 
-End.
+function TLearnThread.LoadDefinition: Boolean;
+var
+  sFilename: string;
+  ini: TInifile;
+  SL, SL2, SLValues: TStringLIst;
+  s: String;
+  i, k: Integer;
+  sDataPath: String;
 
+  sLayerType: String;
+  sName: String;
+  iFilter_Size: Integer;
+  iFilter_Count: Integer;
+  iStride: Integer;
+  iPad: Integer;
+
+  iSize_x: Integer;
+  iSize_y: Integer;
+  iDepth: Integer;
+  iSize: Integer;
+  iOutSize: Integer;
+  sdrop_prob: Single;
+
+  sActivation: String;
+begin
+
+  Result := true;
+
+  sFilename := ExtractFilePath(application.ExeName) + 'Structure.ini';
+  if fileexists(sFilename) then
+  begin
+
+    ini := TInifile.create(sFilename);
+    try
+      // die Datenstruktur ausklamüsern
+      SL := TStringLIst.create;
+      SL.Delimiter := ',';
+      SLValues := TStringLIst.create;
+      SL2 := TStringLIst.create;
+      SL2.Delimiter := ':';
+      try
+        ini.ReadSectionValues('Structure', SLValues);
+
+        Layer_Def.Clear;
+
+        // die LayerDefinition
+        // über alle Layer
+        for i := 0 to SLValues.Count - 1 do
+        begin
+
+          s := SLValues[i];
+          delete(s, 1, pos('=', s));
+
+          SL.DelimitedText := StringReplace(s, ' ', '', [rfReplaceAll]);
+
+          // alle Parameter...
+          for k := 0 to SL.Count - 1 do
+          begin
+            SL2.DelimitedText := SL[k];
+            if lowercase(SL2[0]) = 'layer' then
+              sLayerType := lowercase(SL2[1]);
+
+            if lowercase(SL2[0]) = 'name' then
+              sName := lowercase(SL2[1]);
+
+            if lowercase(SL2[0]) = 'filter_size' then
+              iFilter_Size := strToInt(lowercase(SL2[1]));
+
+            if lowercase(SL2[0]) = 'filter_count' then
+              iFilter_Count := strToInt(lowercase(SL2[1]));
+
+            if lowercase(SL2[0]) = 'stride' then
+              iStride := strToInt(lowercase(SL2[1]));
+
+            if lowercase(SL2[0]) = 'size' then
+              iSize := strToInt(lowercase(SL2[1]));
+
+            if lowercase(SL2[0]) = 'pad' then
+              iPad := strToInt(lowercase(SL2[1]));
+
+            if lowercase(SL2[0]) = 'size_x' then
+              iSize_x := strToInt(lowercase(SL2[1]));
+            if lowercase(SL2[0]) = 'size_y' then
+              iSize_y := strToInt(lowercase(SL2[1]));
+            if lowercase(SL2[0]) = 'depth' then
+              iDepth := strToInt(lowercase(SL2[1]));
+
+            if lowercase(SL2[0]) = 'dropprob' then
+              sdrop_prob := strTofloat(lowercase(SL2[1]));
+
+            if lowercase(SL2[0]) = 'activation' then
+              sActivation := lowercase(SL2[1]);
+          end; // END FOR Layer Parameter
+
+          // Übernehme die Definitionen der Layer
+          if sLayerType = 'input' then
+          begin
+            Layer_Def.ADD(CreateOpt_Input(sName, iSize_x, iSize_y, iDepth));
+          end;
+          if sLayerType = 'conv' then
+          begin
+            Layer_Def.ADD(CreateOpt_Conv(sName, iFilter_Size, iFilter_Count,
+              iStride, iPad, sActivation));
+          end;
+
+          if sLayerType = 'pool' then
+          begin
+            Layer_Def.ADD(CreateOpt_Pool(sName, iSize, iStride));
+          end;
+
+          if sLayerType = 'softmax' then
+          begin
+            Layer_Def.ADD(CreateOpt_Hidden(sName, 'softmax', iSize, 'NONE'));
+            iOutSize := iSize;
+          end;
+
+          if sLayerType = 'fc' then
+          begin
+            Layer_Def.ADD(CreateOpt_FullyConnected(sName, iSize, sActivation));
+            iOutSize := iSize;
+          end;
+
+          if sLayerType = 'dropout' then
+          begin
+            Layer_Def.ADD(CreateOpt_Dropout(sName, sdrop_prob));
+            iOutSize := iSize;
+          end;
+
+        end; // END FOR LAYERS
+
+        Net.makeLayers(Layer_Def);
+        If assigned(InfoCMD) Then
+          InfoCMD(-1, Net);
+
+      finally
+        SL2.Free;
+        SL.Free;
+        SLValues.Free;
+      end;
+
+      // ====================================================================
+      sWeightsFilename := ini.ReadString('Data_Filenames', 'Weights', '');
+      Net.sWightsFilename := sWeightsFilename;
+
+      // Bilder laden
+      iImageBlock := 1;
+      Class_Imaging := TClass_Imaging.create;
+
+      Class_Imaging.LoadCategories(ini.ReadString('Data_Filenames', 'Labels',
+        ''), ini.ReadString('Data_Filenames', 'DetailLabels', ''));
+
+      // sDataPath + 'coarse_label_names.txt',
+      // sDataPath + 'fine_label_names.txt');
+
+      Class_Imaging.StartTrainData(ini.ReadString('Data_Filenames',
+        'TrainData', ''));
+      Class_Imaging.StartTestData(ini.ReadString('Data_Filenames',
+        'TestData', ''));
+
+      sResultsFilename := ini.ReadString('Data_Filenames', 'Results', '');
+
+      ResultArray := TMyArray.create(iOutSize);
+      // es gibt z.B. 100 Klassen bei Cifar100
+
+      // ===============================================================================
+      // Lernen....
+      // ===============================================================================
+
+      // die Parameter
+      Options.method := ini.ReadString('Options', 'method', 'adagrad');
+      // 'adagrad';
+      Options.batch_size := ini.ReadInteger('Options', 'batch_size', 15);
+      // (4) nach jedem Batch werden die Gradienten gelöscht!
+
+      Options.learning_rate := ini.ReadFloat('Options', 'learning_rate', 0.01);
+      // 0.01; // 0.0001; //
+
+      Options.momentum := ini.ReadFloat('Options', 'momentum', 0.9);
+      // 0.9; // 0.9
+
+      Options.l1_decay := ini.ReadFloat('Options', 'l1_decay', 0); // 0;
+      Options.l2_decay := ini.ReadFloat('Options', 'l2_decay', 0.0001);
+      // 0.0001;
+
+      Options.ro := ini.ReadFloat('Options', 'ro', 0.95); // 0.95;
+      Options.eps := ini.ReadFloat('Options', 'eps', 1E-6); // 1E-6;
+
+      // =========================================================================
+      // DER CHUNK
+      // ein Block an Infomationen, der sicher gelernt sein muss, bevor der nächste Chunk gelernt werden kann
+      // wird eine Information nicht gelernt, so kommt sie in den nächsten Chank zum wiederholten Lernen
+      Options.ChunkEnabled := ini.ReadBool('Chunk', 'ChunkEnabled', true);
+
+      Options.ChunkSize := ini.ReadInteger('Chunk', 'ChunkSize',
+        10 * Options.batch_size);
+      // 10 * Options.batch_size;
+      // Anzahl der zu lernenden Bilder
+      Options.ChunkRepetitions := ini.ReadInteger('Chunk', 'ChunkRepetitions',
+        4); // ; // Anzahl der Wiederholungen
+      Options.ChunkAccLikeliHood := ini.ReadFloat('Chunk', 'ChunkAccLikeliHood',
+        0.8); // 0.8;
+      // Mindest-W-keit, dass eine Information als gelernt akzeptiert wird
+      Options.ChunkNonAccLikeliHood := ini.ReadFloat('Chunk',
+        'ChunkNonAccLikeliHood', 0.2); // 0.2;
+      // Mindest-W-keit, dass eine Information als gelernt akzeptiert wird
+
+    finally
+      ini.Free;
+    end;
+  end
+  else
+    Result := false;
+end;
+
+Procedure TFRMMain.FormResize(Sender: TObject);
+Begin
+  imgDebug.Picture.Bitmap.Width := imgDebug.Width;
+  imgDebug.Picture.Bitmap.Height := imgDebug.Height;
+End;
+
+procedure TFRMMain.FormShow(Sender: TObject);
+begin
+  LearnThread.bMakePrediction := true;
+
+  if LearnThread.Suspended then
+    Prediction(false);
+end;
+
+Procedure TFRMMain.btnTestClick(Sender: TObject);
+Begin
+  LearnThread.bMakePrediction := true;
+
+  if LearnThread.Suspended then
+    Prediction(false);
+End;
+
+End.

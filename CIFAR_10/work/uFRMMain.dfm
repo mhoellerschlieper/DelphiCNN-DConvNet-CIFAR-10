@@ -1,9 +1,9 @@
 object FRMMain: TFRMMain
-  Left = 22
-  Top = 48
-  Width = 1493
-  Height = 784
+  Left = 207
+  Top = 22
   Caption = 'CNN - M.H'#246'ller-Schlieper 2017'
+  ClientHeight = 739
+  ClientWidth = 1276
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -14,19 +14,23 @@ object FRMMain: TFRMMain
   OldCreateOrder = True
   OnCreate = FormCreate
   OnDestroy = FormDestroy
+  OnResize = FormResize
+  OnShow = FormShow
   PixelsPerInch = 96
   TextHeight = 13
-  object Image1: TImage
+  object imgDebug: TImage
     Left = 857
     Top = 41
-    Width = 628
-    Height = 673
+    Width = 419
+    Height = 679
     Align = alClient
+    ExplicitWidth = 427
+    ExplicitHeight = 687
   end
   object Panel3: TPanel
     Left = 0
     Top = 0
-    Width = 1485
+    Width = 1276
     Height = 41
     Align = alTop
     TabOrder = 0
@@ -42,9 +46,9 @@ object FRMMain: TFRMMain
     object lblLoss: TLabel
       Left = 145
       Top = 23
-      Width = 64
+      Width = 28
       Height = 13
-      Caption = 'press start...'
+      Caption = 'lblloss'
       Color = clBtnFace
       ParentColor = False
     end
@@ -58,14 +62,36 @@ object FRMMain: TFRMMain
       OnClick = btnStartClick
     end
     object cbDebug: TCheckBox
-      Left = 864
-      Top = 11
-      Width = 273
+      Left = 856
+      Top = 7
+      Width = 51
       Height = 19
-      Caption = 'Debug and show details'
+      Caption = 'Debug'
       Checked = True
       State = cbChecked
       TabOrder = 1
+      OnClick = cbDebugClick
+    end
+    object cbUseChunk: TCheckBox
+      Left = 737
+      Top = 7
+      Width = 97
+      Height = 17
+      Caption = 'Use Chunk'
+      Checked = True
+      State = cbChecked
+      TabOrder = 2
+      OnClick = cbUseChunkClick
+    end
+    object cbShowWeights: TCheckBox
+      Left = 928
+      Top = 7
+      Width = 185
+      Height = 19
+      Caption = 'show weights'
+      Checked = True
+      State = cbChecked
+      TabOrder = 3
       OnClick = cbDebugClick
     end
   end
@@ -73,68 +99,100 @@ object FRMMain: TFRMMain
     Left = 0
     Top = 41
     Width = 857
-    Height = 673
+    Height = 679
     Align = alLeft
     TabOrder = 1
-    object imgPrediction: TImage
-      Left = 8
-      Top = 32
-      Width = 649
-      Height = 429
-    end
-    object panButtons: TPanel
-      Left = 664
-      Top = 7
-      Width = 169
-      Height = 458
-      TabOrder = 0
-    end
-    object Chart1: TChart
+    object Panel2: TPanel
       Left = 1
-      Top = 480
+      Top = 1
       Width = 855
-      Height = 192
-      BackWall.Brush.Color = clWhite
-      BackWall.Brush.Style = bsClear
-      Foot.Brush.Color = clBtnFace
-      Foot.Color = clBtnFace
-      Foot.Font.Charset = DEFAULT_CHARSET
-      Foot.Font.Color = clBlue
-      Foot.Font.Height = -11
-      Foot.Font.Name = 'Arial'
-      Foot.Font.Style = [fsItalic]
-      Title.Brush.Color = clBtnFace
-      Title.Color = clBtnFace
-      Title.Text.Strings = (
-        'LOSS')
-      View3D = False
-      View3DWalls = False
-      Align = alBottom
-      TabOrder = 1
-    end
-    object btnNext: TButton
-      Left = 296
-      Top = 4
-      Width = 209
-      Height = 25
-      Caption = '> test next images'
-      TabOrder = 2
-      OnClick = btnNextClick
-    end
-    object btnPrev: TButton
-      Left = 112
-      Top = 4
-      Width = 179
-      Height = 25
-      Caption = '< test prev images'
-      TabOrder = 3
-      OnClick = btnPrevClick
+      Height = 677
+      Align = alClient
+      Color = clMaroon
+      ParentBackground = False
+      TabOrder = 0
+      DesignSize = (
+        855
+        677)
+      object panButtons: TPanel
+        Left = 663
+        Top = 1
+        Width = 191
+        Height = 675
+        Align = alRight
+        BevelOuter = bvNone
+        Color = cl3DDkShadow
+        ParentBackground = False
+        TabOrder = 0
+      end
+      object btnPrev: TButton
+        Left = 216
+        Top = 4
+        Width = 75
+        Height = 25
+        Caption = '<'
+        TabOrder = 1
+        OnClick = btnPrevClick
+      end
+      object btnNext: TButton
+        Left = 296
+        Top = 4
+        Width = 75
+        Height = 25
+        Caption = '>'
+        TabOrder = 2
+        OnClick = btnNextClick
+      end
+      object btnTest: TButton
+        Left = 8
+        Top = 4
+        Width = 75
+        Height = 25
+        Caption = 'Test'
+        TabOrder = 3
+        OnClick = btnTestClick
+      end
+      object Chart1: TChart
+        Left = 7
+        Top = 467
+        Width = 650
+        Height = 201
+        BackWall.Brush.Style = bsClear
+        Foot.Brush.Color = clBtnFace
+        Foot.Color = clBtnFace
+        Foot.Font.Color = clBlue
+        Title.Brush.Color = clBtnFace
+        Title.Color = clBtnFace
+        Title.Text.Strings = (
+          'LOSS')
+        View3D = False
+        View3DWalls = False
+        TabOrder = 4
+        Anchors = [akLeft, akTop, akRight, akBottom]
+        DefaultCanvas = 'TGDIPlusCanvas'
+        ColorPaletteIndex = 13
+      end
+      object ScrollBox1: TScrollBox
+        Left = 8
+        Top = 35
+        Width = 649
+        Height = 426
+        VertScrollBar.Tracking = True
+        TabOrder = 5
+        object imgPrediction: TImage
+          Left = 0
+          Top = 0
+          Width = 628
+          Height = 1600
+          Align = alTop
+        end
+      end
     end
   end
   object StatusBar: TStatusBar
     Left = 0
-    Top = 714
-    Width = 1485
+    Top = 720
+    Width = 1276
     Height = 19
     Panels = <>
   end
@@ -143,9 +201,9 @@ object FRMMain: TFRMMain
     Top = 65
     object File1: TMenuItem
       Caption = 'File'
-      object Laod1: TMenuItem
+      object Load1: TMenuItem
         Caption = 'Load'
-        OnClick = Laod1Click
+        OnClick = Load1Click
       end
       object Store1: TMenuItem
         Caption = 'Store'
