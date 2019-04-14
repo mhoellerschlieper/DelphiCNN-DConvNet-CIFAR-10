@@ -1,4 +1,4 @@
-# DelphiCNN
+# DelphiCNN/DConvNet
 
 This is a ConvNetJS to Delphi7 (object pascal) translation.
 
