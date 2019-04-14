@@ -15,7 +15,7 @@ Const
 
 Type
   { ============================================================================= }
-  TPArraysingle = Array[0..0] Of single;
+  TPArrayDouble = Array[0..0] Of Double;
   TPArrayInteger = Array[0..0] Of integer;
 
   TMyArray = Class
@@ -38,24 +38,24 @@ Type
     w: TMyArray;
     dw: TMyArray;
 
-    Constructor create(_sx, _sy, _depth: Integer; _c: single = c_Undefined); Overload;
-    Constructor create(_StartInitValues: Array Of single); Overload;
+    Constructor create(_sx, _sy, _depth: Integer; _c: Double = c_Undefined); Overload;
+    Constructor create(_StartInitValues: Array Of Double); Overload;
     Destructor destroy; Override;
 
-    Procedure setVal(_x, _y, _d: Integer; _v: single);
-    Function get(_x, _y, _d: Integer): single;
-    Procedure add(_x, _y, _d: Integer; _v: single);
-    Procedure add_grad(_x, _y, _d: Integer; _v: single);
-    Function get_grad(_x, _y, _d: Integer): single;
-    Function set_grad(_x, _y, _d: Integer; _v: single): single;
+    Procedure setVal(_x, _y, _d: Integer; _v: Double);
+    Function get(_x, _y, _d: Integer): Double;
+    Procedure add(_x, _y, _d: Integer; _v: Double);
+    Procedure add_grad(_x, _y, _d: Integer; _v: Double);
+    Function get_grad(_x, _y, _d: Integer): Double;
+    Function set_grad(_x, _y, _d: Integer; _v: Double): Double;
 
     Function cloneAndZero: TVolume;
     Function clone: TVolume;
     Procedure Copy(Var v: TVolume);
 
     Procedure addFrom(v: TVolume);
-    Procedure addFromScaled(v: TVolume; a: single);
-    Procedure setConst(a: single);
+    Procedure addFromScaled(v: TVolume; a: Double);
+    Procedure setConst(a: Double);
 
   End;
 
@@ -76,8 +76,8 @@ Type
 
     filters: Integer;
 
-    sx: Integer;
-    sy: Integer;
+    Filter_sx: Integer;
+    Filter_sy: Integer;
     stride: Integer;
     pad: Integer;
 
@@ -99,11 +99,11 @@ Type
 
     group_size: Integer;
 
-    drop_prob: single;
+    drop_prob: Double;
 
-    l1_decay_mul: single;
-    l2_decay_mul: single;
-    bias_pref: single;
+    l1_decay_mul: Double;
+    l2_decay_mul: Double;
+    bias_pref: Double;
 
     activation: String;
   End;
@@ -114,27 +114,27 @@ Type
       maxv,
       mini,
       minv,
-      dv: single;
+      dv: Double;
   End;
 
   { ============================================================================= }
   TGlobal = Class
     return_v: Boolean;
-    v_val: single;
+    v_val: Double;
 
-    Function gaussRandom(): single;
-    Function randf(a, b: single): single;
-    Function randi(a, b: single): Integer;
-    Function randn(mu, std: single): single;
+    Function gaussRandom(): Double;
+    Function randf(a, b: Double): Double;
+    Function randi(a, b: Double): Integer;
+    Function randn(mu, std: Double): Double;
 
     Function Zeros(n: Integer): TMyArray;
-    Function arrContains(arr: TMyArray; elt: single): Boolean;
+    Function arrContains(arr: TMyArray; elt: Double): Boolean;
     Function arrUnique(arr: TMyArray): TMyArray;
 
     Function maxmin(w: TMyArray): TMinMax;
     Function randperm(n: Integer): TMyArray;
-    Function weightedSample(lst: TMyArray; probs: TMyArray): single;
-    Function getopt(opt: Array Of variant; field_name: Array Of Const; default_value: single): single;
+    Function weightedSample(lst: TMyArray; probs: TMyArray): Double;
+    Function getopt(opt: Array Of variant; field_name: Array Of Const; default_value: Double): Double;
   End;
 
 Var
@@ -154,8 +154,8 @@ Constructor TMyArray.create(Len: Integer);
 Begin
   length := Len;
   new(Buffer);
-  getmem(Buffer, length * sizeof(single));
-  //Buffer:=FastGetMem(length * sizeof(single));
+  getmem(Buffer, length * sizeof(Double));
+  //Buffer:=FastGetMem(length * sizeof(Double));
   FillZero;
 End;
 
@@ -170,14 +170,14 @@ Destructor TMyArray.destroy;
 Begin
   If Buffer <> Nil Then
     freemem(Buffer);
-  dispose(Buffer);
+  //dispose(Buffer);
   Buffer := Nil;
   Inherited destroy;
 End;
 
 Procedure TMyArray.FillZero;
 Begin
-  fillchar(TPArraysingle(Buffer^), length * sizeof(single), 0);
+  fillchar(TPArrayDouble(Buffer^), length * sizeof(Double), 0);
 End;
 
 { vol }
@@ -195,9 +195,9 @@ End;
 // the data. c is optionally a value to initialize the volume
 // with. If c is missing, fills the Vol with random numbers.
 
-Constructor TVolume.create(_StartInitValues: Array Of single); // overload;
+Constructor TVolume.create(_StartInitValues: Array Of Double); // overload;
 Var
-  scale             : single;
+  scale             : Double;
   i                 : Integer;
 Begin
   sx := 1;
@@ -213,7 +213,7 @@ Begin
   // of incoming connections have outputs of larger variance
 
   For i := 0 To n - 1 Do
-    TPArraysingle(w.Buffer^)[i] := _StartInitValues[i];
+    TPArrayDouble(w.Buffer^)[i] := _StartInitValues[i];
 
 End;
 
@@ -224,9 +224,9 @@ End;
 //
 // ==============================================================================
 
-Constructor TVolume.create(_sx, _sy, _depth: Integer; _c: single = c_Undefined);
+Constructor TVolume.create(_sx, _sy, _depth: Integer; _c: Double = c_Undefined);
 Var
-  scale             : single;
+  scale             : Double;
   i                 : Integer;
 Begin
 
@@ -245,7 +245,7 @@ Begin
       // of incoming connections have outputs of larger variance
       scale := sqrt(1.0 / (sx * sy * depth));
       For i := 0 To n - 1 Do
-        TPArraysingle(w.Buffer^)[i] := Global.randn(0.0, scale);
+        TPArrayDouble(w.Buffer^)[i] := Global.randn(0.0, scale);
     End
 End;
 
@@ -273,12 +273,12 @@ End;
 //
 // ==============================================================================
 
-Function TVolume.get(_x, _y, _d: Integer): single;
+Function TVolume.get(_x, _y, _d: Integer): Double;
 Var
   ix                : Integer;
 Begin
   ix := ((sx * _y) + _x) * depth + _d;
-  Result := TPArraysingle(w.Buffer^)[ix];
+  Result := TPArrayDouble(w.Buffer^)[ix];
 End;
 
 // ==============================================================================
@@ -288,12 +288,12 @@ End;
 //
 // ==============================================================================
 
-Procedure TVolume.setVal(_x, _y, _d: Integer; _v: single);
+Procedure TVolume.setVal(_x, _y, _d: Integer; _v: Double);
 Var
   ix                : Integer;
 Begin
   ix := ((sx * _y) + _x) * depth + _d;
-  TPArraysingle(w.Buffer^)[ix] := _v;
+  TPArrayDouble(w.Buffer^)[ix] := _v;
 End;
 
 // ==============================================================================
@@ -303,12 +303,12 @@ End;
 //
 // ==============================================================================
 
-Procedure TVolume.add(_x, _y, _d: Integer; _v: single);
+Procedure TVolume.add(_x, _y, _d: Integer; _v: Double);
 Var
   ix                : Integer;
 Begin
   ix := ((sx * _y) + _x) * depth + _d;
-  TPArraysingle(w.Buffer^)[ix] := TPArraysingle(w.Buffer^)[ix] + _v;
+  TPArrayDouble(w.Buffer^)[ix] := TPArrayDouble(w.Buffer^)[ix] + _v;
 End;
 
 // ==============================================================================
@@ -318,12 +318,12 @@ End;
 //
 // ==============================================================================
 
-Function TVolume.get_grad(_x, _y, _d: Integer): single;
+Function TVolume.get_grad(_x, _y, _d: Integer): Double;
 Var
   ix                : Integer;
 Begin
   ix := ((sx * _y) + _x) * depth + _d;
-  Result := TPArraysingle(dw.Buffer^)[ix];
+  Result := TPArrayDouble(dw.Buffer^)[ix];
 End;
 
 // ==============================================================================
@@ -333,12 +333,12 @@ End;
 //
 // ==============================================================================
 
-Function TVolume.set_grad(_x, _y, _d: Integer; _v: single): single;
+Function TVolume.set_grad(_x, _y, _d: Integer; _v: Double): Double;
 Var
   ix                : Integer;
 Begin
   ix := ((sx * _y) + _x) * depth + _d;
-  TPArraysingle(dw.Buffer^)[ix] := _v;
+  TPArrayDouble(dw.Buffer^)[ix] := _v;
 End;
 
 // ==============================================================================
@@ -348,12 +348,12 @@ End;
 //
 // ==============================================================================
 
-Procedure TVolume.add_grad(_x, _y, _d: Integer; _v: single);
+Procedure TVolume.add_grad(_x, _y, _d: Integer; _v: Double);
 Var
   ix                : Integer;
 Begin
   ix := ((sx * _y) + _x) * depth + _d;
-  TPArraysingle(dw.Buffer^)[ix] := TPArraysingle(dw.Buffer^)[ix] + _v;
+  TPArrayDouble(dw.Buffer^)[ix] := TPArrayDouble(dw.Buffer^)[ix] + _v;
 End;
 
 // ==============================================================================
@@ -384,7 +384,7 @@ Begin
 
   n := w.length;
 
-  move(TPArraysingle(w.Buffer^)[0], TPArraysingle(v.w.Buffer^)[0], n * sizeof(single));
+  move(TPArrayDouble(w.Buffer^)[0], TPArrayDouble(v.w.Buffer^)[0], n * sizeof(Double));
   { for i := 0 to n-1 do
     v.w.Buffer^[i] := w.Buffer^[i]; }
 
@@ -397,7 +397,7 @@ Var
 Begin
   n := w.length;
 
-  move(TPArraysingle(v.w.Buffer^)[0], TPArraysingle(w.Buffer^)[0], n * sizeof(single));
+  move(TPArrayDouble(v.w.Buffer^)[0], TPArrayDouble(w.Buffer^)[0], n * sizeof(Double));
 
   { for i := 0 to n-1 do
     v.w.Buffer^[i] := w.Buffer^[i]; }
@@ -415,7 +415,7 @@ Var
   k                 : Integer;
 Begin
   For k := 0 To w.length - 1 Do
-    TPArraysingle(w.Buffer^)[k] := TPArraysingle(w.Buffer^)[k] + TPArraysingle(v.w.Buffer^)[k];
+    TPArrayDouble(w.Buffer^)[k] := TPArrayDouble(w.Buffer^)[k] + TPArrayDouble(v.w.Buffer^)[k];
 End;
 
 // ==============================================================================
@@ -425,12 +425,12 @@ End;
 //
 // ==============================================================================
 
-Procedure TVolume.addFromScaled(v: TVolume; a: single);
+Procedure TVolume.addFromScaled(v: TVolume; a: Double);
 Var
   k                 : Integer;
 Begin
   For k := 0 To w.length - 1 Do
-    TPArraysingle(w.Buffer^)[k] := TPArraysingle(w.Buffer^)[k] + a * TPArraysingle(v.w.Buffer^)[k];
+    TPArrayDouble(w.Buffer^)[k] := TPArrayDouble(w.Buffer^)[k] + a * TPArrayDouble(v.w.Buffer^)[k];
 End;
 
 // ==============================================================================
@@ -440,12 +440,12 @@ End;
 //
 // ==============================================================================
 
-Procedure TVolume.setConst(a: single);
+Procedure TVolume.setConst(a: Double);
 Var
   k                 : Integer;
 Begin
   For k := 0 To w.length - 1 Do
-    TPArraysingle(w.Buffer^)[k] := a;
+    TPArrayDouble(w.Buffer^)[k] := a;
 
 End;
 
@@ -457,9 +457,9 @@ End;
 //
 // ==============================================================================
 
-Function TGlobal.gaussRandom: single;
+Function TGlobal.gaussRandom: Double;
 Var
-  c, u, v, r        : single;
+  c, u, v, r        : Double;
 Begin
   If (return_v) Then
     Begin
@@ -487,7 +487,7 @@ End;
 //
 // ==============================================================================
 
-Function TGlobal.randf(a, b: single): single;
+Function TGlobal.randf(a, b: Double): Double;
 Begin
   Result := random * (b - a) + a;
 End;
@@ -499,7 +499,7 @@ End;
 //
 // ==============================================================================
 
-Function TGlobal.randi(a, b: single): Integer;
+Function TGlobal.randi(a, b: Double): Integer;
 Begin
   Result := Math.floor(random * (b - a) + a);
 End;
@@ -511,7 +511,7 @@ End;
 //
 // ==============================================================================
 
-Function TGlobal.randn(mu, std: single): single;
+Function TGlobal.randn(mu, std: Double): Double;
 Begin
   Result := mu + gaussRandom() * std;
 End;
@@ -540,14 +540,14 @@ End;
 //
 // ==============================================================================
 
-Function TGlobal.arrContains(arr: TMyArray; elt: single): Boolean;
+Function TGlobal.arrContains(arr: TMyArray; elt: Double): Boolean;
 Var
   i                 : Integer;
 Begin
   Result := false;
   For i := 0 To arr.length - 1 Do
     Begin
-      If (TPArraysingle(arr.Buffer^)[i] = elt) Then
+      If (TPArrayDouble(arr.Buffer^)[i] = elt) Then
         Begin
           Result := true;
           exit;
@@ -572,9 +572,9 @@ Begin
   k := 0;
   For i := 0 To arr.length Do
     Begin
-      If (Not arrContains(b, TPArraysingle(arr.Buffer^)[i])) Then
+      If (Not arrContains(b, TPArrayDouble(arr.Buffer^)[i])) Then
         Begin
-          TPArraysingle(b.Buffer^)[k] := TPArraysingle(arr.Buffer^)[i];
+          TPArrayDouble(b.Buffer^)[k] := TPArrayDouble(arr.Buffer^)[i];
           k := k + 1;
         End;
       Result := b;
@@ -599,20 +599,20 @@ Begin
       exit;
     End;
 
-  Result.maxv := TPArraysingle(w.Buffer^)[0];
-  Result.minv := TPArraysingle(w.Buffer^)[0];
+  Result.maxv := TPArrayDouble(w.Buffer^)[0];
+  Result.minv := TPArrayDouble(w.Buffer^)[0];
   Result.maxi := 0;
   Result.mini := 0;
   For i := 1 To w.length - 1 Do
     Begin
-      If (TPArraysingle(w.Buffer^)[i] > Result.maxv) Then
+      If (TPArrayDouble(w.Buffer^)[i] > Result.maxv) Then
         Begin
-          Result.maxv := TPArraysingle(w.Buffer^)[i];
+          Result.maxv := TPArrayDouble(w.Buffer^)[i];
           Result.maxi := i;
         End;
-      If (TPArraysingle(w.Buffer^)[i] < Result.minv) Then
+      If (TPArrayDouble(w.Buffer^)[i] < Result.minv) Then
         Begin
-          Result.minv := TPArraysingle(w.Buffer^)[i];
+          Result.minv := TPArrayDouble(w.Buffer^)[i];
           Result.mini := i;
         End;
       Result.dv := Result.maxv - Result.minv;
@@ -630,7 +630,7 @@ End;
 Function TGlobal.randperm(n: Integer): TMyArray;
 Var
   i, j, q           : Integer;
-  temp              : single;
+  temp              : Double;
   arr               : TMyArray;
 Begin
   i := n;
@@ -638,14 +638,14 @@ Begin
   temp := 0;
   arr := TMyArray.create(0);
   For q := 0 To n - 1 Do
-    TPArraysingle(arr.Buffer^)[q] := q;
+    TPArrayDouble(arr.Buffer^)[q] := q;
 
   While (i <> 0) Do
     Begin
       j := Math.floor(random * (i + 1));
-      temp := TPArraysingle(arr.Buffer^)[i];
-      TPArraysingle(arr.Buffer^)[i] := TPArraysingle(arr.Buffer^)[j];
-      TPArraysingle(arr.Buffer^)[j] := temp;
+      temp := TPArrayDouble(arr.Buffer^)[i];
+      TPArrayDouble(arr.Buffer^)[i] := TPArrayDouble(arr.Buffer^)[j];
+      TPArrayDouble(arr.Buffer^)[j] := temp;
       dec(i);
     End;
   Result := arr;
@@ -660,20 +660,20 @@ End;
 // sample from list lst according to probabilities in list probs
 // the two lists are of same size, and probs adds up to 1
 
-Function TGlobal.weightedSample(lst: TMyArray; probs: TMyArray): single;
+Function TGlobal.weightedSample(lst: TMyArray; probs: TMyArray): Double;
 Var
-  p, cumprob        : single;
+  p, cumprob        : Double;
   k                 : Integer;
 Begin
   p := randf(0, 1.0);
   cumprob := 0.0;
   For k := 0 To lst.length - 1 Do
     Begin
-      cumprob := cumprob + TPArraysingle(probs.Buffer^)[k];
+      cumprob := cumprob + TPArrayDouble(probs.Buffer^)[k];
 
       If (p < cumprob) Then
         Begin
-          Result := TPArraysingle(lst.Buffer^)[k];
+          Result := TPArrayDouble(lst.Buffer^)[k];
           exit;
         End;
     End
@@ -687,7 +687,7 @@ End;
 //
 // ==============================================================================
 
-Function TGlobal.getopt(opt: Array Of variant; field_name: Array Of Const; default_value: single): single;
+Function TGlobal.getopt(opt: Array Of variant; field_name: Array Of Const; default_value: Double): Double;
 Begin
   Result := default_value;
 End;
@@ -715,7 +715,7 @@ Begin
 End;
 
 Initialization
-
+  randomize;
   Global := TGlobal.create;
 
 Finalization

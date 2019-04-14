@@ -32,7 +32,7 @@ Type
     CLDevice: TDCLDevice;
   Public
     ExecuteTime: Integer;
-    Input1, Input2, Output: PArrTCL_float;
+    Input1, Input2, Output: ^PArrTCL_float;
     count: Integer;
     Size: Integer;
     Width, Height: Integer;
@@ -59,8 +59,8 @@ Begin
   CLDevice := TDCLPlatforms.create().Platforms[0].DeviceWithMaxClockFrequency;
   CommandQueue := CLDevice.CreateCommandQueue();
 
-  InputBuffer1 := CLDevice.CreateBuffer(Size, @Input1[0], [mfReadOnly, mfUseHostPtr]);
-  InputBuffer2 := CLDevice.CreateBuffer(Size, @Input2[0], [mfReadOnly, mfUseHostPtr]);
+  InputBuffer1 := CLDevice.CreateBuffer(Size, @Input1^[0], [mfReadOnly, mfUseHostPtr]);
+  InputBuffer2 := CLDevice.CreateBuffer(Size, @Input2^[0], [mfReadOnly, mfUseHostPtr]);
   OutputBuffer := CLDevice.CreateBuffer(Size, Nil, [mfWriteOnly]);
 
   If CLDevice.Status <> 0 Then
@@ -102,11 +102,11 @@ End;
 Procedure TOpenCL2In1Out.Execute;
 Begin
 
-  CommandQueue.WriteBuffer(InputBuffer1, Size, @Input1[0]);
-  CommandQueue.WriteBuffer(InputBuffer2, Size, @Input2[0]);
+  CommandQueue.WriteBuffer(InputBuffer1, Size, @Input1^[0]);
+  CommandQueue.WriteBuffer(InputBuffer2, Size, @Input2^[0]);
   CommandQueue.Execute(Kernel, Width * Height);
   ExecuteTime := CommandQueue.ExecuteTime;
-  CommandQueue.ReadBuffer(OutputBuffer, Size, @Output[0]); 
+  CommandQueue.ReadBuffer(OutputBuffer, Size, @Output^[0]);
 
 End;
 end.

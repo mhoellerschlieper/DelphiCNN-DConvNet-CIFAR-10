@@ -7,19 +7,22 @@ Uses Windows,
   SysUtils,
   Classes,
   Math,
-  uClasses_Types
-  ;
+  uClasses_Types;
 
-Function CreateOpt_Input(sName: String; out_sx, out_sy, out_depth: Integer): TOpt;
-Function CreateOpt_Conv(sName: String; sx, Filters, Stride, pad: Integer; activation: String): TOpt;
-Function CreateOpt_Pool(sName: String; sx, Stride: Integer): TOpt;
-Function CreateOpt_Dropout(sName: String; drop_prob: single): TOpt;
-Function CreateOpt_FullyConnected(sName: String; NumNeurons: Integer; activation: String): TOpt;
+Function CreateOpt_Input(sName: String;
+  out_sx, out_sy, out_depth: Integer): TOpt;
+Function CreateOpt_Conv(sName: String; Filter_Size, Filter_Count, Stride,
+  pad: Integer; activation: String): TOpt;
+Function CreateOpt_Pool(sName: String; Size, Stride: Integer): TOpt;
+Function CreateOpt_Dropout(sName: String; drop_prob: Double): TOpt;
+Function CreateOpt_FullyConnected(sName: String; NumNeurons: Integer;
+  activation: String): TOpt;
 
-Function CreateOpt_Hidden(sName: String; sType: String; NumNeurons: Integer; activation: String): TOpt;
+Function CreateOpt_Hidden(sName: String; sType: String; NumNeurons: Integer;
+  activation: String): TOpt;
 
 Function augment(v: TVolume; crop, dx, dy: Integer; fliplr: Boolean): TVolume;
-Function tanh(x: Single): Single;
+Function tanh(x: Double): Double;
 
 Implementation
 
@@ -27,9 +30,10 @@ Implementation
 // Zusatzfunktionen
 // ==============================================================================
 
-Function CreateOpt_Input(sName: String; out_sx, out_sy, out_depth: Integer): TOpt;
+Function CreateOpt_Input(sName: String;
+  out_sx, out_sy, out_depth: Integer): TOpt;
 Var
-  opt               : TOpt;
+  opt: TOpt;
 Begin
   opt := TOpt.create;
   opt.sType := 'input';
@@ -40,9 +44,10 @@ Begin
   result := opt;
 End;
 
-Function CreateOpt_FullyConnected(sName: String;NumNeurons: Integer; activation: String): TOpt;
+Function CreateOpt_FullyConnected(sName: String; NumNeurons: Integer;
+  activation: String): TOpt;
 Var
-  opt               : TOpt;
+  opt: TOpt;
 Begin
   opt := TOpt.create;
   opt.sType := 'fc';
@@ -54,9 +59,10 @@ Begin
   result := opt;
 End;
 
-Function CreateOpt_Hidden(sName: String;sType: String; NumNeurons: Integer; activation: String): TOpt;
+Function CreateOpt_Hidden(sName: String; sType: String; NumNeurons: Integer;
+  activation: String): TOpt;
 Var
-  opt               : TOpt;
+  opt: TOpt;
 Begin
   opt := TOpt.create;
   opt.sType := sType;
@@ -68,17 +74,16 @@ Begin
   result := opt;
 End;
 
-
-
-Function CreateOpt_Conv(sName: String; sx, Filters, Stride, pad: Integer; activation: String): TOpt;
+Function CreateOpt_Conv(sName: String; Filter_Size, Filter_Count, Stride,
+  pad: Integer; activation: String): TOpt;
 Var
-  opt               : TOpt;
+  opt: TOpt;
 Begin
   opt := TOpt.create;
   opt.sType := 'conv';
-  opt.sx := sx;
-  opt.sy := sx;
-  opt.Filters := Filters;
+  opt.Filter_sx := Filter_Size;
+  opt.Filter_sy := Filter_Size;
+  opt.Filters := Filter_Count;
   opt.Stride := Stride;
   opt.pad := pad;
   opt.activation := activation;
@@ -87,13 +92,13 @@ Begin
   result := opt;
 End;
 
-Function CreateOpt_Pool(sName: String; sx, Stride: Integer): TOpt;
+Function CreateOpt_Pool(sName: String; Size, Stride: Integer): TOpt;
 Var
-  opt               : TOpt;
+  opt: TOpt;
 Begin
   opt := TOpt.create;
-  opt.sx := sx;
-  opt.sy := sx;
+  opt.Filter_sx := Size;
+  opt.Filter_sy := Size;
   opt.sType := 'pool';
   opt.Stride := Stride;
   opt.bias_pref := 0.1;
@@ -101,9 +106,9 @@ Begin
   result := opt;
 End;
 
-Function CreateOpt_dropout(sName: String; drop_prob: single): TOpt;
+Function CreateOpt_Dropout(sName: String; drop_prob: Double): TOpt;
 Var
-  opt               : TOpt;
+  opt: TOpt;
 Begin
   opt := TOpt.create;
   opt.sType := 'dropout';
@@ -119,9 +124,9 @@ End;
 //
 // ==============================================================================
 
-Function tanh(x: Single): Single;
+Function tanh(x: Double): Double;
 Var
-  y                 : Single;
+  y: Double;
 Begin
   y := exp(2 * x);
   result := (y - 1) / (y + 1);
@@ -136,8 +141,8 @@ End;
 
 Function augment(v: TVolume; crop, dx, dy: Integer; fliplr: Boolean): TVolume;
 Var
-  w, W2             : TVolume;
-  x, y, d           : Integer;
+  w, W2: TVolume;
+  x, y, d: Integer;
 Begin
   // note assumes square outputs of size crop x crop
   // if(typeof(fliplr)==='undefined') var fliplr = false;
@@ -147,44 +152,44 @@ Begin
   // randomly sample a crop in the input volume
 
   If (crop <> v.sx) Or (dx <> 0) Or (dy <> 0) Then
+  Begin
+    w := TVolume.create(crop, crop, v.depth, 0.0);
+    For x := 0 To crop - 1 Do
     Begin
-      w := TVolume.create(crop, crop, v.depth, 0.0);
-      For x := 0 To crop - 1 Do
+      For y := 0 To crop - 1 Do
+      Begin
+        If (x + dx < 0) Or (x + dx >= v.sx) Or (y + dy < 0) Or
+          (y + dy >= v.sy) Then
+          continue; // oob
+        For d := 0 To v.depth - 1 Do
         Begin
-          For y := 0 To crop - 1 Do
-            Begin
-              If (x + dx < 0) Or (x + dx >= v.sx) Or (y + dy < 0) Or (y + dy >= v.sy) Then
-                continue;               // oob
-              For d := 0 To v.depth - 1 Do
-                Begin
-                  w.setVal(x, y, d, v.get(x + dx, y + dy, d)); // copy data over
-                End
-            End
+          w.setVal(x, y, d, v.get(x + dx, y + dy, d)); // copy data over
         End
+      End
     End
+  End
   Else
-    Begin
-      w := v;
-    End;
+  Begin
+    w := v;
+  End;
 
   If (fliplr) Then
+  Begin
+    // flip volume horziontally
+    W2 := w.cloneAndZero();
+    For x := 0 To w.sx - 1 Do
     Begin
-      // flip volume horziontally
-      W2 := w.cloneAndZero();
-      For x := 0 To w.sx - 1 Do
+      For y := 0 To w.sy - 1 Do
+      Begin
+        For d := 0 To w.depth - 1 Do
         Begin
-          For y := 0 To w.sy - 1 Do
-            Begin
-              For d := 0 To w.depth - 1 Do
-                Begin
-                  W2.setVal(x, y, d, w.get(w.sx - x - 1, y, d)); // copy data over
-                End;
-            End;
+          W2.setVal(x, y, d, w.get(w.sx - x - 1, y, d)); // copy data over
         End;
-      w := W2;                          // swap
+      End;
     End;
+    w := W2; // swap
+  End;
   result := w;
 End;
 
 End.
-
